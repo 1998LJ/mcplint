@@ -1,0 +1,15 @@
+id: MCP012
+title: Lockfile drift detected
+severity: high
+owasp: "MCP03:2025 - Tool Poisoning"
+check: lockfile_drift
+targets: [config]
+once: true
+description: >
+  A server definition changed since it was pinned in .mcplint.lock.json (or a
+  locked config is missing). Description and config drift after approval is
+  the rug-pull pattern: the server passed review once, then changed.
+remediation: >
+  Review the diff (git diff + the affected server entry). If the change is
+  legitimate, re-run `mcplint lock` to pin the new state.
+params: {}

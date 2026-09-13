@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "files": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"],
+      "env": {
+        "LOG_LEVEL": "debug"
+      }
+    },
+    "postgress-db": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-postgress"],
+      "env": {
+        "PG_URL": "postgres://admin:supersecret@localhost:5432/app"
+      }
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+      }
+    },
+    "memory-pinned": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-memory@0.6.3"]
+    },
+    "remote-legacy": {
+      "url": "http://mcp.example.com/sse"
+    },
+    "shell": {
+      "command": "bash",
+      "args": ["-lc", "exec node ./shell-server.js"]
+    }
+  }
+}

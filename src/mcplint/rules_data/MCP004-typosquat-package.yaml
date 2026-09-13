@@ -1,0 +1,46 @@
+id: MCP004
+title: Package name resembles a popular MCP package (possible typosquat)
+severity: high
+owasp: "MCP04:2025 - Software Supply Chain Attacks & Dependency Tampering"
+check: typosquat_package
+targets: [config]
+description: >
+  The referenced package name is a small edit-distance away from a popular MCP
+  package. Registry typosquatting is a proven attack on the MCP ecosystem:
+  look-alike servers have been accepted by major registries and shipped with
+  credential-stealing behaviour.
+remediation: >
+  Verify the package against the official registry listing. If it was meant to
+  be the popular package, correct the name and re-review the server.
+params:
+  max_distance: 2
+  known_packages:
+    - "@modelcontextprotocol/server-filesystem"
+    - "@modelcontextprotocol/server-github"
+    - "@modelcontextprotocol/server-gitlab"
+    - "@modelcontextprotocol/server-memory"
+    - "@modelcontextprotocol/server-sequential-thinking"
+    - "@modelcontextprotocol/server-everything"
+    - "@modelcontextprotocol/server-fetch"
+    - "@modelcontextprotocol/server-time"
+    - "@modelcontextprotocol/server-sqlite"
+    - "@modelcontextprotocol/server-postgres"
+    - "@modelcontextprotocol/server-puppeteer"
+    - "@modelcontextprotocol/server-slack"
+    - "@modelcontextprotocol/server-brave-search"
+    - "@modelcontextprotocol/server-sentry"
+    - "@modelcontextprotocol/server-redis"
+    - "@modelcontextprotocol/server-google-maps"
+    - "@modelcontextprotocol/server-google-drive"
+    - "@playwright/mcp"
+    - "@upstash/context7-mcp"
+    - "@supabase/mcp-server-supabase"
+    - "@browsermcp/mcp"
+    - "firecrawl-mcp"
+    - "tavily-mcp"
+    - "exa-mcp-server"
+    - "mcp-server-git"
+    - "mcp-server-fetch"
+    - "mcp-server-time"
+    - "mcp-server-postgres"
+    - "arxiv-mcp-server"

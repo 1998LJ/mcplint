@@ -1,0 +1,13 @@
+id: MCP002
+title: MCP config file permissions are too open
+severity: medium
+owasp: "MCP01:2025 - Token Mismanagement & Secret Exposure"
+check: file_permissions
+targets: [config]
+description: >
+  A config file that is group/world-readable while holding credentials, or
+  world-writable (any local process can tamper with it), weakens the trust
+  boundary between you and the MCP servers it defines.
+remediation: >
+  Restrict config files with `chmod 600` (owner read/write only).
+params: {}

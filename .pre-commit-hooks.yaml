@@ -1,0 +1,7 @@
+- id: mcplint
+  name: mcplint
+  description: Scan MCP configs and agent instruction files for security issues
+  entry: mcplint scan --fail-on high
+  language: python
+  pass_filenames: false
+  always_run: true

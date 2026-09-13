@@ -1,0 +1,46 @@
+name: mcplint
+description: Local-first, CI-native security scanner for MCP servers. Never executes your MCP servers.
+author: dtduc-git
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  paths:
+    description: Files or directories to scan
+    required: false
+    default: "."
+  fail-on:
+    description: "Exit 1 at this severity or above: critical | high | medium | low | info | none"
+    required: false
+    default: "high"
+  sarif-file:
+    description: SARIF output path
+    required: false
+    default: "mcplint.sarif"
+  online:
+    description: "Enable online checks (OSV CVE lookups); off by default"
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install mcplint
+      shell: bash
+      run: pip install mcplint || pip install "git+https://github.com/dtduc-git/mcplint"
+    - name: Scan
+      shell: bash
+      run: |
+        mcplint scan ${{ inputs.paths }} \
+          --fail-on ${{ inputs.fail-on }} \
+          --sarif ${{ inputs.sarif-file }} \
+          ${{ inputs.online == 'true' && '--online' || '' }}
+    - name: Upload SARIF
+      if: always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-file }}

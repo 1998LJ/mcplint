@@ -1,0 +1,16 @@
+id: MCP011
+title: Server name defined in multiple configs (tool shadowing risk)
+severity: medium
+owasp: "MCP03:2025 - Tool Poisoning"
+check: server_name_shadowing
+targets: [config]
+once: true
+description: >
+  The same server name is defined in more than one config file in scope (for
+  example project and user level). Depending on client resolution order, one
+  definition silently shadows the other - the mechanism behind tool-shadowing
+  attacks.
+remediation: >
+  Give each server a unique name, or remove the duplicate definition so the
+  intended server is unambiguous.
+params: {}

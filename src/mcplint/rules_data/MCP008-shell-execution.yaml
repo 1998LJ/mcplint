@@ -1,0 +1,17 @@
+id: MCP008
+title: Server can execute arbitrary commands
+severity: high
+owasp: "MCP05:2025 - Command Injection & Execution"
+check: shell_execution_server
+targets: [config]
+description: >
+  The server spawns a shell or is a command-execution server. Combined with any
+  prompt-injection route, this is arbitrary code execution on the machine that
+  runs the agent.
+remediation: >
+  Replace shell servers with narrow, purpose-built tools. If a shell must stay,
+  run it in a sandboxed container with default-deny network egress and no
+  access to host credentials.
+params:
+  shell_bins: ["bash", "sh", "zsh", "fish", "dash", "cmd", "cmd.exe", "powershell", "pwsh"]
+  shell_hints: ["shell-server", "server-shell", "terminal-mcp", "command-runner", "exec-server"]

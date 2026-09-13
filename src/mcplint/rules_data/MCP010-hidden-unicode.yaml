@@ -1,0 +1,15 @@
+id: MCP010
+title: Hidden unicode characters in instructions or config
+severity: critical
+owasp: "MCP03:2025 - Tool Poisoning / MCP06:2025 - Intent Flow Subversion"
+check: hidden_unicode
+targets: [instructions, config]
+description: >
+  Zero-width and bidirectional control characters are invisible to human
+  review but read by the model. They are a known way to smuggle instructions
+  into tool descriptions and skill files past reviewers.
+remediation: >
+  Inspect the reported line with a hex-capable editor, remove the hidden
+  characters, and treat the file as untrusted until reviewed.
+params:
+  codepoints: ["00AD", "200B", "200C", "200D", "200E", "200F", "202A", "202B", "202C", "202D", "202E", "2060", "2061", "2062", "2063", "2064", "FEFF"]

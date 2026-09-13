@@ -1,0 +1,34 @@
+id: MCP009
+title: Possible prompt-injection indicators in instructions or config
+severity: high
+owasp: "MCP03:2025 - Tool Poisoning / MCP06:2025 - Intent Flow Subversion"
+check: injection_markers
+targets: [instructions, config]
+description: >
+  Instruction files (SKILL.md, AGENTS.md, .cursorrules...) and tool metadata
+  are read by the model as trusted context. Hidden instructions in them can
+  hijack the agent away from the user's goal. One indicator alone may be
+  benign phrasing; several in the same file are reported as high severity.
+remediation: >
+  Review the file text around the reported line. Keep instructions declarative,
+  never embed instructions that suppress user notification, access credentials,
+  or send data to URLs.
+params:
+  patterns:
+    - name: instruction override
+      regex: '(?i)ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions|rules|prompts)'
+      high_confidence: true
+    - name: secrecy instruction
+      regex: '(?i)do\s+not\s+(tell|inform|mention|notify|reveal\s+to)\s+(the\s+)?user'
+    - name: covert action
+      regex: '(?i)(secretly|silently|without\s+(telling|informing|notifying)\s+the\s+user)'
+    - name: authority impersonation
+      regex: '(?i)(^|\n)\s*(system|assistant)\s*:'
+    - name: exfiltration intent
+      regex: '(?i)(exfiltrate|send|forward|upload|post)\s+.{0,60}(https?://|\$\(|curl|webhook)'
+    - name: credential access
+      regex: '(?i)(\.ssh/id_|\.aws/credentials|\.env\b|keychain)'
+    - name: encoded payload
+      regex: '(?i)(base64[,\s]+[A-Za-z0-9+/=]{80,}|atob\(|eval\()'
+    - name: tool shadowing instruction
+      regex: '(?i)when\s+(the\s+)?user\s+(asks|requests).{0,40}(instead|pretend|replace)'

@@ -1,0 +1,17 @@
+id: MCP007
+title: Filesystem server is scoped to a dangerous root
+severity: medium
+owasp: "MCP02:2025 - Privilege Escalation via Scope Creep"
+check: filesystem_overreach
+targets: [config]
+description: >
+  A filesystem-capable server is pointed at `/`, `$HOME`, `/etc` or a similar
+  broad root. Every agent session inherits read/write reach far beyond the
+  project workspace, and a prompt-injected tool call can exfiltrate or corrupt
+  anything the user account can touch.
+remediation: >
+  Scope filesystem servers to the narrowest path that works (the repository
+  root), and run them with a dedicated low-privilege account or container.
+params:
+  dangerous_paths: ["/", "~", "$HOME", "/etc", "/root", "/home", "C:\\", "C:/", "\\"]
+  filesystem_hints: ["filesystem", "file-system", "fs-server", "filesystem-mcp"]

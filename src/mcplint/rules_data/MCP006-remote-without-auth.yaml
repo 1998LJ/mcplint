@@ -1,0 +1,16 @@
+id: MCP006
+title: Remote MCP endpoint references no authentication
+severity: medium
+owasp: "MCP07:2025 - Insufficient Authentication & Authorization"
+check: remote_without_auth
+targets: [config]
+description: >
+  A remote MCP endpoint has no Authorization header, no token/key environment
+  variable, and no auth-looking header name. Roughly 40% of internet-exposed
+  MCP servers were found without authentication; an unauthenticated endpoint
+  is an open door to whatever it fronts.
+remediation: >
+  Configure an Authorization header (or scoped token env var) for the server,
+  and prefer short-lived, audience-bound tokens over static API keys.
+params:
+  auth_env_pattern: '(?i)(token|api[_-]?key|secret|auth|bearer|credential)'

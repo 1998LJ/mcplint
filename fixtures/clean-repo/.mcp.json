@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "files": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem@0.6.2", "/workspace/repo"]
+    },
+    "remote": {
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "${env:MCP_TOKEN}"
+      }
+    },
+    "local": {
+      "command": "./bin/mcp-server",
+      "args": ["--port", "0"]
+    }
+  }
+}

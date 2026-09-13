@@ -1,0 +1,14 @@
+id: MCP005
+title: Remote MCP endpoint uses plain HTTP
+severity: high
+owasp: "MCP07:2025 - Insufficient Authentication & Authorization"
+check: insecure_remote_transport
+targets: [config]
+description: >
+  A remote MCP endpoint is configured over `http://`. Tool calls, tool results
+  and any credential exchanged with it travel unencrypted and can be read or
+  modified on the network.
+remediation: >
+  Use `https://` for every remote MCP endpoint. If the server only speaks HTTP,
+  put it behind a TLS-terminating proxy you control.
+params: {}
