@@ -123,6 +123,8 @@ aggregate scan of 1,210 public MCP configs from 1,197 repositories (56.5% have
 at least one finding). Methodology and the reproducible script
 ([`scripts/ecosystem_scan.py`](scripts/ecosystem_scan.py)) are included.
 
+Read the write-up: [We scanned 1,210 MCP configs on GitHub. 56% have a security finding.](blog/2026-09-13-state-of-mcp-configs.md)
+
 ## Development
 
 ```bash

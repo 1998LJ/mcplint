@@ -1,5 +1,7 @@
 # We scanned 1,210 MCP configs on GitHub. 56% have a security finding.
 
+_2026-09-13 · research_
+
 MCP went from a few hundred servers to a 10,000+ ecosystem in less than two
 years. Every one of those servers gets wired into an agent through a config
 file — `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `opencode.json`,
@@ -20,7 +22,8 @@ ran the mcplint rule engine (13 rules mapped to the
 
 **Sample: 1,210 configs from 1,197 repositories, referencing 2,013 MCP servers.**
 The full methodology, the aggregate report and the script are in the repo:
-[`research/state-of-mcp-configs.md`](https://github.com/dtduc-git/mcplint/blob/master/research/state-of-mcp-configs.md).
+[`research/state-of-mcp-configs.md`](../research/state-of-mcp-configs.md) ·
+[`scripts/ecosystem_scan.py`](../scripts/ecosystem_scan.py).
 
 ## The headline numbers
 
@@ -76,8 +79,8 @@ and a Chrome DevTools MCP version with a symlink-following file write:
 
 | Package | Advisory |
 | --- | --- |
-| `@playwright/mcp@~0.0.79` | GHSA-6fg3-hvw7-2fwq |
-| `chrome-devtools-mcp@0.21.0` | GHSA-3pvj-jv98-qhjq |
+| `@playwright/mcp@~0.0.70`, `@playwright/mcp@~0.0.79` | GHSA-6fg3-hvw7-2fwq |
+| `chrome-devtools-mcp@0.21.0`, `@0.23.0` | GHSA-3pvj-jv98-qhjq |
 | `@apify/actors-mcp-server@0.9.10` | GHSA-6gr2-qh89-hxwm, GHSA-jwp7-wg77-3w9v |
 
 Pinning is a prerequisite for this check — you cannot match an advisory
@@ -111,9 +114,21 @@ after approval — the rug-pull detection OWASP recommends for MCP03.
 This is a best-match sample, not a uniform random draw; popularity and recency
 skew it. Configs are point-in-time snapshots. Heuristic rules trade precision
 for recall — treat the numbers as a lower bound on risk signals, not a verdict
-on any repository.
+on any repository. No repository is named in the dataset; the raw per-repo
+results are intentionally not published.
 
-Secure your agents.
+## Run it yourself
 
-— mcplint is Apache-2.0. Rules are YAML; PRs welcome:
+The whole pipeline is reproducible:
+
+```bash
+git clone https://github.com/dtduc-git/mcplint
+cd mcplint
+uv sync --all-groups
+uv run python scripts/ecosystem_scan.py --per-query 400 --online
+```
+
+---
+
+mcplint is Apache-2.0. Rules are YAML; PRs welcome:
 https://github.com/dtduc-git/mcplint
