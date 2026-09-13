@@ -64,6 +64,9 @@ exists — drop it into CI as-is.
 | MCP configs | `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `opencode.json[c]`, `.codex/config.toml`, `~/.codeium/windsurf/mcp_config.json`, `~/.gemini/settings.json` |
 | Instruction / skill files | `SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc` |
 
+Scans recurse into subdirectories (`node_modules`, virtualenvs and build
+outputs are skipped), so monorepos work out of the box.
+
 ## Rules
 
 | Rule | Severity | OWASP MCP Top 10 | Checks |
@@ -112,6 +115,13 @@ Findings show up as annotations and in the repo's code-scanning tab (SARIF).
 4. **Rules as data.** YAML + a small, tested check engine — contributions do
    not need to touch the scanner core.
 5. **Non-goals:** no gateway, no proxy, no runtime traffic monitoring, no SaaS.
+
+## Research
+
+[**State of MCP configs in the wild**](research/state-of-mcp-configs.md) — an
+aggregate scan of 1,210 public MCP configs from 1,197 repositories (56.5% have
+at least one finding). Methodology and the reproducible script
+([`scripts/ecosystem_scan.py`](scripts/ecosystem_scan.py)) are included.
 
 ## Development
 

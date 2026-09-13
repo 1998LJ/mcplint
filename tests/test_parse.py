@@ -61,3 +61,26 @@ def test_parse_rejects_non_mcp_json(tmp_path: Path) -> None:
     path = tmp_path / "package.json"
     path.write_text('{"name": "demo", "version": "1.0.0"}', encoding="utf-8")
     assert parse_config_file(path) is None
+
+
+def test_nested_configs_are_discovered(tmp_path: Path) -> None:
+    from mcplint.discovery import discover
+
+    nested = tmp_path / "packages" / "api"
+    nested.mkdir(parents=True)
+    (nested / ".mcp.json").write_text(
+        '{"mcpServers": {"demo": {"command": "npx", "args": ["demo@1.0.0"]}}}',
+        encoding="utf-8",
+    )
+    cursor = tmp_path / "apps" / "web" / ".cursor"
+    cursor.mkdir(parents=True)
+    (cursor / "mcp.json").write_text("{}", encoding="utf-8")
+    skipped = tmp_path / "node_modules" / "pkg"
+    skipped.mkdir(parents=True)
+    (skipped / ".mcp.json").write_text("{}", encoding="utf-8")
+
+    configs, _ = discover([tmp_path])
+    names = {path.name for path in configs}
+    assert ".mcp.json" in names
+    assert "mcp.json" in names
+    assert all("node_modules" not in str(path) for path in configs)

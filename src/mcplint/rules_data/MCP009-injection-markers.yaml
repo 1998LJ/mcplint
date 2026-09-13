@@ -27,7 +27,7 @@ params:
     - name: exfiltration intent
       regex: '(?i)(exfiltrate|send|forward|upload|post)\s+.{0,60}(https?://|\$\(|curl|webhook)'
     - name: credential access
-      regex: '(?i)(\.ssh/id_|\.aws/credentials|\.env\b|keychain)'
+      regex: '(?i)(\.ssh/id_|\.aws/credentials|keychain)'
     - name: encoded payload
       regex: '(?i)(base64[,\s]+[A-Za-z0-9+/=]{80,}|atob\(|eval\()'
     - name: tool replacement instruction

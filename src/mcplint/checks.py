@@ -87,7 +87,27 @@ def _looks_placeholder(value: str) -> bool:
         "none",
         "null",
     }
-    return value.strip().lower() in placeholders
+    lowered = value.strip().lower()
+    if lowered in placeholders:
+        return True
+    markers = (
+        "your_",
+        "your-",
+        "xxx",
+        "dummy",
+        "placeholder",
+        "example",
+        "sample",
+        "fake",
+        "changeme",
+        "change-me",
+        "insert_",
+        "replace_",
+        "todo",
+        "<",
+        ">",
+    )
+    return any(marker in lowered for marker in markers)
 
 
 def _first_matching_pattern(value: str, patterns: list[dict[str, Any]]) -> str | None:
@@ -102,6 +122,27 @@ def _first_matching_pattern(value: str, patterns: list[dict[str, Any]]) -> str |
 
 def _is_local_host(hostname: str | None) -> bool:
     return hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def _is_internal_host(hostname: str | None) -> bool:
+    """Private, loopback, link-local and dev TLDs: unencrypted transport is
+    less exposed than on the public internet, so findings rank lower."""
+    import ipaddress
+
+    if not hostname:
+        return False
+    lowered = hostname.lower()
+    if "." not in lowered:
+        return True
+    if lowered == "localhost" or lowered.endswith(
+        (".local", ".internal", ".test", ".docker.internal", ".localhost")
+    ):
+        return True
+    try:
+        ip = ipaddress.ip_address(lowered)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback or ip.is_link_local
 
 
 @check("secrets_in_config")
@@ -143,7 +184,9 @@ def secrets_in_config(rule: Rule, target: MCPConfigFile, ctx: ScanContext) -> li
         for key, value in server.env.items():
             scan_value(server.name, key, value)
         joined = " ".join(server.command)
-        matched = _first_matching_pattern(joined, patterns)
+        matched = (
+            _first_matching_pattern(joined, patterns) if not _looks_placeholder(joined) else None
+        )
         if matched:
             findings.append(
                 _finding(
@@ -155,7 +198,7 @@ def secrets_in_config(rule: Rule, target: MCPConfigFile, ctx: ScanContext) -> li
                 )
             )
         for header, value in server.headers.items():
-            if _is_env_ref(value):
+            if _is_env_ref(value) or _looks_placeholder(value):
                 continue
             matched = _first_matching_pattern(value, patterns)
             if matched:
@@ -243,17 +286,23 @@ def _levenshtein(a: str, b: str) -> int:
 @check("typosquat_package")
 def typosquat_package(rule: Rule, target: MCPConfigFile, ctx: ScanContext) -> list[Finding]:
     known = [str(k) for k in rule.params.get("known_packages", [])]
-    max_distance = int(rule.params.get("max_distance", 2))
-    known_norm = {normalize_package(k): k for k in known}
+    max_distance = int(rule.params.get("max_distance", 1))
+
+    def alpha(name: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", name.lower())
+
+    known_full = {normalize_package(k): k for k in known}
+    known_alpha = {alpha(k): k for k in known}
+
     findings: list[Finding] = []
     for server in target.servers:
         for spec in package_specs(server):
             name = spec.name
-            if not name or name in known_norm:
+            if not name or name in known_full or alpha(name) in known_alpha:
                 continue
-            for known_name, original in known_norm.items():
-                distance = _levenshtein(name, known_name)
-                if 1 <= distance <= max_distance and abs(len(name) - len(known_name)) <= 2:
+            for known_name, original in known_full.items():
+                distance = _levenshtein(alpha(name), alpha(known_name))
+                if 1 <= distance <= max_distance:
                     findings.append(
                         _finding(
                             rule,
@@ -276,14 +325,17 @@ def insecure_remote_transport(rule: Rule, target: MCPConfigFile, ctx: ScanContex
             continue
         parsed = urllib.parse.urlparse(server.url)
         if parsed.scheme == "http" and not _is_local_host(parsed.hostname):
+            severity = Severity.LOW if _is_internal_host(parsed.hostname) else rule.severity
+            scope = "internal host" if severity is Severity.LOW else "public host"
             findings.append(
                 _finding(
                     rule,
                     target.path,
-                    f"remote endpoint '{server.url}' uses plain HTTP — tool calls and results "
-                    "travel unencrypted",
+                    f"remote endpoint '{server.url}' uses plain HTTP ({scope}) — tool calls and "
+                    "results travel unencrypted",
                     server=server.name,
                     line=_line_of(target.raw_text, server.url),
+                    severity=severity,
                 )
             )
     return findings
@@ -403,7 +455,7 @@ def injection_markers(rule: Rule, target: Any, ctx: ScanContext) -> list[Finding
     if not hits:
         return []
 
-    severity = Severity.HIGH if (high_confidence or len(hits) >= 2) else Severity.MEDIUM
+    severity = Severity.HIGH if (high_confidence or len(hits) >= 2) else Severity.LOW
     findings: list[Finding] = []
     for name, position in hits[:5]:
         findings.append(

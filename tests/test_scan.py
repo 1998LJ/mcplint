@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from mcplint.rules import load_rules
@@ -51,3 +52,41 @@ def test_pinned_package_is_not_flagged() -> None:
     result = scan([FIXTURES / "vulnerable-repo"], load_rules())
     unpinned = [f for f in result.findings if f.rule_id == "MCP003"]
     assert all("memory-pinned" != f.server for f in unpinned)
+
+
+def test_typosquat_ignores_separator_and_scope_variants(tmp_path: Path) -> None:
+    path = tmp_path / ".mcp.json"
+    path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "a": {"command": "npx", "args": ["playwright-mcp@1.0.0"]},
+                    "b": {"command": "npx", "args": ["mcp-server-postgresql@1.0.0"]},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = scan([tmp_path], load_rules())
+    assert not [f for f in result.findings if f.rule_id == "MCP004"]
+
+
+def test_private_http_host_ranks_lower_than_public(tmp_path: Path) -> None:
+    path = tmp_path / ".mcp.json"
+    path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "internal": {"url": "http://agent-gateway:8787/mcp"},
+                    "public": {"url": "http://mcp.example.com/mcp"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = scan([tmp_path], load_rules())
+    http = [f for f in result.findings if f.rule_id == "MCP005"]
+    internal = next(f for f in http if "agent-gateway" in f.message)
+    public = next(f for f in http if "mcp.example.com" in f.message)
+    assert internal.severity.value == "low"
+    assert public.severity.value == "high"

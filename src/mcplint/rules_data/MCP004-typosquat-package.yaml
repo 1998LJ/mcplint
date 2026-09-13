@@ -13,7 +13,7 @@ remediation: >
   Verify the package against the official registry listing. If it was meant to
   be the popular package, correct the name and re-review the server.
 params:
-  max_distance: 2
+  max_distance: 1
   known_packages:
     - "@modelcontextprotocol/server-filesystem"
     - "@modelcontextprotocol/server-github"
