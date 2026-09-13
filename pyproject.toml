@@ -1,6 +1,6 @@
 [project]
 name = "mcplint"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Local-first, CI-native security scanner for MCP servers — OWASP MCP Top 10 rules, lockfile and AIBOM. Never executes your MCP servers."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -48,6 +48,9 @@ Changelog = "https://github.com/dtduc-git/mcplint/releases"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/mcplint/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcplint"]

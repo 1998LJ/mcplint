@@ -21,7 +21,7 @@ params:
     - name: secrecy instruction
       regex: '(?i)do\s+not\s+(tell|inform|mention|notify|reveal\s+to)\s+(the\s+)?user'
     - name: covert action
-      regex: '(?i)(secretly|silently|without\s+(telling|informing|notifying)\s+the\s+user)'
+      regex: '(?i)(secretly|without\s+(telling|informing|notifying)\s+the\s+user)'
     - name: authority impersonation
       regex: '(?i)(^|\n)\s*(system|assistant)\s*:'
     - name: exfiltration intent
@@ -30,5 +30,7 @@ params:
       regex: '(?i)(\.ssh/id_|\.aws/credentials|\.env\b|keychain)'
     - name: encoded payload
       regex: '(?i)(base64[,\s]+[A-Za-z0-9+/=]{80,}|atob\(|eval\()'
-    - name: tool shadowing instruction
-      regex: '(?i)when\s+(the\s+)?user\s+(asks|requests).{0,40}(instead|pretend|replace)'
+    - name: tool replacement instruction
+      regex: '(?i)(replace|substitute|override)\s+the\s+(tool|server|mcp|response)\b'
+    - name: deception instruction
+      regex: '(?i)\bpretend\s+(to|that)\b'
