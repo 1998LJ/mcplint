@@ -5,12 +5,15 @@ OWASP MCP Top 10 rules, a lockfile for rug-pull detection, and an AIBOM export.
 It never executes your MCP servers.
 
 [![CI](https://github.com/dtduc-git/mcplint/actions/workflows/ci.yml/badge.svg)](https://github.com/dtduc-git/mcplint/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/mcplint)](https://pypi.org/project/mcplint/)
+[![PyPI](https://img.shields.io/pypi/v/mcplint-sec)](https://pypi.org/project/mcplint-sec/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ```
-uvx mcplint scan
+uvx mcplint-sec scan
 ```
+
+> PyPI distribution is `mcplint-sec` (the `mcplint` name collides with an
+> existing project); the command it installs is **`mcplint`**.
 
 ---
 

@@ -51,7 +51,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mcplint"
+name = "mcplint-sec"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },

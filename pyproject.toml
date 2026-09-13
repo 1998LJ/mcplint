@@ -1,5 +1,5 @@
 [project]
-name = "mcplint"
+name = "mcplint-sec"
 dynamic = ["version"]
 description = "Local-first, CI-native security scanner for MCP servers — OWASP MCP Top 10 rules, lockfile and AIBOM. Never executes your MCP servers."
 readme = "README.md"
@@ -39,6 +39,7 @@ dependencies = [
 
 [project.scripts]
 mcplint = "mcplint.cli:main"
+mcplint-sec = "mcplint.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/dtduc-git/mcplint"
