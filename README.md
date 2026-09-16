@@ -7,13 +7,15 @@ It never executes your MCP servers.
 [![CI](https://github.com/dtduc-git/mcplint/actions/workflows/ci.yml/badge.svg)](https://github.com/dtduc-git/mcplint/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/mcplint-sec)](https://pypi.org/project/mcplint-sec/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![M8ven Live Monitored](https://m8ven.ai/badge/mcp/dtduc-git-mcplint-1qvg1q)](https://m8ven.ai/mcp/dtduc-git-mcplint-1qvg1q)
 
 ```
 uvx mcplint-sec scan
 ```
 
 > PyPI distribution is `mcplint-sec` (the `mcplint` name collides with an
-> existing project); the command it installs is **`mcplint`**.
+> existing project); it installs the **`mcplint`** command. With `uvx`, invoke
+> it by distribution name: `uvx mcplint-sec …`.
 
 ---
 
@@ -37,21 +39,21 @@ leaving your environment.
 
 ```bash
 # scan the current repo
-uvx mcplint scan
+uvx mcplint-sec scan
 
 # also scan user-level client configs and skills
-uvx mcplint scan --home
+uvx mcplint-sec scan --home
 
 # pin server fingerprints, detect drift in CI
-uvx mcplint lock
-uvx mcplint lock --check
+uvx mcplint-sec lock
+uvx mcplint-sec lock --check
 
 # CycloneDX AIBOM of every MCP server
-uvx mcplint inventory -o aibom.json
+uvx mcplint-sec inventory -o aibom.json
 
 # what do the rules mean?
-uvx mcplint rules list
-uvx mcplint rules explain MCP004
+uvx mcplint-sec rules list
+uvx mcplint-sec rules explain MCP004
 ```
 
 Exit code is `1` when a finding at `--fail-on` severity (default `high`)
