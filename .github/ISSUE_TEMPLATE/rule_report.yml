@@ -1,0 +1,44 @@
+name: Rule report — false positive, miss, or new rule
+description: Report rule behavior or propose a new check
+title: "[rule] "
+labels: ["rules"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Report type
+      options:
+        - False positive — the rule flagged something that is fine
+        - Missed detection — a risky config was not flagged
+        - New rule idea
+    validations:
+      required: true
+  - type: input
+    id: rule
+    attributes:
+      label: Rule ID
+      description: For false positives and misses, e.g. MCP004. Leave as "new" for rule ideas.
+      placeholder: MCP004
+    validations:
+      required: false
+  - type: textarea
+    id: config
+    attributes:
+      label: Config snippet (redact secrets)
+      description: The smallest config that reproduces the behavior.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: input
+    id: owasp
+    attributes:
+      label: OWASP MCP Top 10 mapping (for new rules)
+      placeholder: "MCP03:2025 - Tool Poisoning"
+    validations:
+      required: false

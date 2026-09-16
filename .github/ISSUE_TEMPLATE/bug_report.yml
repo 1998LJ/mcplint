@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a crash, incorrect output, or unexpected behavior
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Vulnerabilities in mcplint itself: see [SECURITY.md](../blob/master/SECURITY.md) — please do not open a public issue for those.
+  - type: input
+    id: version
+    attributes:
+      label: mcplint version
+      description: Output of `mcplint --version`
+      placeholder: "0.1.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - CLI scan
+        - lockfile (lock / lock --check)
+        - inventory (AIBOM)
+        - rules (list / explain)
+        - GitHub Action
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: The command you ran and the output you got.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config snippet (redact secrets)
+      render: json
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, how you installed mcplint (uvx / pip / GitHub Action).
+    validations:
+      required: false
