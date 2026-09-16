@@ -1,4 +1,4 @@
-name: mcplint
+name: mcplint-sec
 description: Local-first, CI-native security scanner for MCP servers. Never executes your MCP servers.
 author: dtduc-git
 branding:
