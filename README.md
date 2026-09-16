@@ -85,14 +85,18 @@ outputs are skipped), so monorepos work out of the box.
 | MCP006 | medium | MCP07 Auth | remote endpoint with no auth material |
 | MCP007 | medium | MCP02 Scope Creep | filesystem server scoped to `/`, `$HOME`, ... |
 | MCP008 | high | MCP05 Command Execution | shell / command-execution servers |
-| MCP009 | high | MCP03 Tool Poisoning | prompt-injection indicators in instructions |
-| MCP010 | critical | MCP03 Tool Poisoning | zero-width / bidi unicode (hidden text) |
+| MCP009 | high | MCP03 Tool Poisoning / MCP06 Intent Flow Subversion | prompt-injection indicators in instructions |
+| MCP010 | critical | MCP03 Tool Poisoning / MCP06 Intent Flow Subversion | zero-width / bidi unicode (hidden text) |
 | MCP011 | medium | MCP03 Tool Poisoning | cross-config server name shadowing |
 | MCP012 | high | MCP03 Tool Poisoning | lockfile drift (rug-pull detection) |
 | MCP013 | high | MCP04 Supply Chain | pinned packages matching OSV advisories (`--online`) |
 
 Rules are data: plain YAML in [`src/mcplint/rules_data/`](src/mcplint/rules_data).
 Bring your own with `--rules-dir ./my-rules`.
+
+Coverage: the 13 rules map to 7 of the 10 OWASP MCP Top 10 categories; MCP08
+(audit & telemetry), MCP09 (shadow servers) and MCP10 (context over-sharing)
+are runtime and operational risks outside the reach of static config scanning.
 
 ## GitHub Actions
 
