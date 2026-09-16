@@ -67,7 +67,7 @@ exists — drop it into CI as-is.
 
 | Input | Examples |
 | --- | --- |
-| MCP configs | `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `opencode.json[c]`, `.codex/config.toml`, `~/.codeium/windsurf/mcp_config.json`, `~/.gemini/settings.json` |
+| MCP configs | `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `opencode.json[c]`, `.codex/config.toml`, `cline_mcp_settings.json`, `~/.claude.json`, `~/.codeium/windsurf/mcp_config.json`, `~/.gemini/settings.json` |
 | Instruction / skill files | `SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc` |
 
 Scans recurse into subdirectories (`node_modules`, virtualenvs and build
