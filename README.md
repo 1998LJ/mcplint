@@ -54,6 +54,9 @@ uvx mcplint-sec inventory -o aibom.json
 # what do the rules mean?
 uvx mcplint-sec rules list
 uvx mcplint-sec rules explain MCP004
+
+# scaffold a GitHub Actions workflow + starter config
+uvx mcplint-sec init
 ```
 
 Exit code is `1` when a finding at `--fail-on` severity (default `high`)
@@ -105,6 +108,7 @@ steps:
 ```
 
 Findings show up as annotations and in the repo's code-scanning tab (SARIF).
+Or scaffold this workflow and a starter config with `uvx mcplint-sec init`.
 
 ## Design principles
 
