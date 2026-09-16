@@ -100,7 +100,7 @@ machine unless you pass `--online`.
 For CI:
 
 ```yaml
-- uses: dtduc-git/mcplint@main
+- uses: dtduc-git/mcplint@v0.1.2
   with:
     fail-on: high
 ```

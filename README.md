@@ -8,6 +8,7 @@ It never executes your MCP servers.
 [![PyPI](https://img.shields.io/pypi/v/mcplint-sec)](https://pypi.org/project/mcplint-sec/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![M8ven Live Monitored](https://m8ven.ai/badge/mcp/dtduc-git-mcplint-1qvg1q)](https://m8ven.ai/mcp/dtduc-git-mcplint-1qvg1q)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-mcplint--sec-blue?logo=github)](https://github.com/marketplace/actions/mcplint-sec)
 
 ```
 uvx mcplint-sec scan
@@ -102,7 +103,7 @@ permissions:
 
 steps:
   - uses: actions/checkout@v4
-  - uses: dtduc-git/mcplint@main
+  - uses: dtduc-git/mcplint@v0.1.2
     with:
       fail-on: high
 ```
