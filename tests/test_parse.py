@@ -86,6 +86,69 @@ def test_nested_configs_are_discovered(tmp_path: Path) -> None:
     assert all("node_modules" not in str(path) for path in configs)
 
 
+def test_claude_json_user_scope_discovery(tmp_path: Path, monkeypatch) -> None:
+    from mcplint.discovery import discover
+
+    home = tmp_path / "home"
+    home.mkdir()
+    claude_json = home / ".claude.json"
+    claude_json.write_text(
+        """
+        {
+          "numCachedChunks": 12,
+          "mcpServers": {
+            "sqlite": { "command": "uvx", "args": ["mcp-server-sqlite"] }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    configs, _ = discover([], include_home=True)
+    assert any(c.name == ".claude.json" for c in configs)
+
+    parsed = parse_config_file(claude_json)
+    assert parsed is not None
+    assert parsed.client == "claude-code"
+    assert len(parsed.servers) == 1
+    assert parsed.servers[0].name == "sqlite"
+    assert parsed.servers[0].command == ["uvx", "mcp-server-sqlite"]
+
+
+def test_claude_json_malformed_skipped(tmp_path: Path, monkeypatch) -> None:
+    from mcplint.discovery import discover
+
+    home = tmp_path / "home"
+    home.mkdir()
+    claude_json = home / ".claude.json"
+    claude_json.write_text("{invalid json", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(home))
+    configs, _ = discover([], include_home=True)
+    assert any(c.name == ".claude.json" for c in configs)
+
+    # Parsing should return None safely without crashing
+    assert parse_config_file(claude_json) is None
+
+
+def test_claude_json_oversized_skipped(tmp_path: Path, monkeypatch) -> None:
+    from mcplint.discovery import discover
+    from mcplint.parse import MAX_CONFIG_BYTES
+
+    home = tmp_path / "home"
+    home.mkdir()
+    claude_json = home / ".claude.json"
+
+    # Write a file exceeding MAX_CONFIG_BYTES
+    claude_json.write_bytes(b" " * (MAX_CONFIG_BYTES + 1))
+
+    monkeypatch.setenv("HOME", str(home))
+    configs, _ = discover([], include_home=True)
+    assert any(c.name == ".claude.json" for c in configs)
+
+    # Parsing oversized config should safely return None without reading/crashing
+    assert parse_config_file(claude_json) is None
 def test_cline_linux_discovery_and_parse(tmp_path: Path, monkeypatch) -> None:
     from mcplint.discovery import discover
 
@@ -172,4 +235,3 @@ def test_cline_macos_discovery_with_spaces(tmp_path: Path, monkeypatch) -> None:
     assert parsed is not None
     assert parsed.client == "cline"
     assert parsed.servers[0].name == "fetch"
-
