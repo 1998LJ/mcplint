@@ -17,6 +17,7 @@ REPO_CONFIGS: list[tuple[str, str]] = [
 ]
 
 HOME_CONFIGS: list[tuple[str, str]] = [
+    ("~/.claude.json", "claude-code"),
     ("~/.cursor/mcp.json", "cursor"),
     ("~/.codeium/windsurf/mcp_config.json", "windsurf"),
     ("~/.codex/config.toml", "codex"),
