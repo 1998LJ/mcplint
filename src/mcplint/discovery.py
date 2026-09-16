@@ -22,6 +22,36 @@ HOME_CONFIGS: list[tuple[str, str]] = [
     ("~/.codex/config.toml", "codex"),
     ("~/.gemini/settings.json", "gemini"),
     ("~/.config/opencode/opencode.json", "opencode"),
+    (
+        "~/.config/Code/User/globalStorage/"
+        "saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+        "cline",
+    ),
+    (
+        "~/.config/Cursor/User/globalStorage/"
+        "saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+        "cline",
+    ),
+    (
+        "~/Library/Application Support/Code/User/globalStorage/"
+        "saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+        "cline",
+    ),
+    (
+        "~/Library/Application Support/Cursor/User/globalStorage/"
+        "saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+        "cline",
+    ),
+    (
+        "~/AppData/Roaming/Code/User/globalStorage/"
+        "saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+        "cline",
+    ),
+    (
+        "~/AppData/Roaming/Cursor/User/globalStorage/"
+        "saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+        "cline",
+    ),
 ]
 
 INSTRUCTION_FILES = [

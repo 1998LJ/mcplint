@@ -84,3 +84,92 @@ def test_nested_configs_are_discovered(tmp_path: Path) -> None:
     assert ".mcp.json" in names
     assert "mcp.json" in names
     assert all("node_modules" not in str(path) for path in configs)
+
+
+def test_cline_linux_discovery_and_parse(tmp_path: Path, monkeypatch) -> None:
+    from mcplint.discovery import discover
+
+    home = tmp_path / "home"
+    cline_dir = (
+        home
+        / ".config"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "saoudrizwan.claude-dev"
+        / "settings"
+    )
+    cline_dir.mkdir(parents=True)
+    settings = cline_dir / "cline_mcp_settings.json"
+    settings.write_text(
+        """
+        {
+          "mcpServers": {
+            "weather": {
+              "command": "node",
+              "args": ["build/index.js"],
+              "env": {
+                "API_KEY": "secret"
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    configs, _ = discover([], include_home=True)
+    assert any(c.name == "cline_mcp_settings.json" for c in configs)
+
+    parsed = parse_config_file(settings)
+    assert parsed is not None
+    assert parsed.client == "cline"
+    assert len(parsed.servers) == 1
+    assert parsed.servers[0].name == "weather"
+    assert parsed.servers[0].command == ["node", "build/index.js"]
+    assert parsed.servers[0].env["API_KEY"] == "secret"
+
+
+def test_cline_macos_discovery_with_spaces(tmp_path: Path, monkeypatch) -> None:
+    from mcplint.discovery import discover
+
+    home = tmp_path / "home"
+    cline_dir = (
+        home
+        / "Library"
+        / "Application Support"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "saoudrizwan.claude-dev"
+        / "settings"
+    )
+    cline_dir.mkdir(parents=True)
+    settings = cline_dir / "cline_mcp_settings.json"
+    settings.write_text(
+        """
+        {
+          "mcpServers": {
+            "fetch": {
+              "command": "uvx",
+              "args": ["mcp-server-fetch"]
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    configs, _ = discover([], include_home=True)
+    assert any(
+        "Application Support" in str(c) and c.name == "cline_mcp_settings.json"
+        for c in configs
+    )
+
+    parsed = parse_config_file(settings)
+    assert parsed is not None
+    assert parsed.client == "cline"
+    assert parsed.servers[0].name == "fetch"
+

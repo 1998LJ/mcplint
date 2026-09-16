@@ -53,3 +53,40 @@ def test_version_flag() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert "mcplint" in result.output
+
+
+def test_scan_home_finds_cline(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    cline_dir = (
+        home
+        / ".config"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "saoudrizwan.claude-dev"
+        / "settings"
+    )
+    cline_dir.mkdir(parents=True)
+    settings = cline_dir / "cline_mcp_settings.json"
+    settings.write_text(
+        """
+        {
+          "mcpServers": {
+            "demo": {
+              "command": "npx",
+              "args": ["-y", "safe-tool@1.0.0"]
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    result = runner.invoke(app, ["scan", str(empty), "--home", "--json", "--fail-on", "none"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert any("cline_mcp_settings.json" in c for c in payload["scanned"]["configs"])
+
+
