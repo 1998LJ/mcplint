@@ -199,6 +199,12 @@ def _render_gate(result: GateResult, console: Console) -> None:
         f"[bold]mcplint gate[/bold] profile={result.profile} target={result.target} "
         f"({result.probes_run} probe(s), read-only)"
     )
+    if result.profile == "auth" and not result.inventory:
+        console.print(
+            "[yellow]test key sees 0 tool(s)[/yellow] — nothing to compare. Check the "
+            "key's MCP grants (object_permission) and that the upstream token is "
+            "accepted; see the AUTH000 note below."
+        )
     if result.inventory:
         shown = ", ".join(result.inventory[:20])
         extra = (
@@ -210,9 +216,12 @@ def _render_gate(result: GateResult, console: Console) -> None:
             f"[dim]test key sees {len(result.inventory)} tool(s):[/dim] {shown}{extra}"
         )
     if not result.findings:
-        console.print(
-            "[green]No findings: authentication was enforced on every probed endpoint.[/green]"
+        message = (
+            "No findings: the test key's visibility and access matched expectations."
+            if result.profile == "auth"
+            else "No findings: authentication was enforced on every probed endpoint."
         )
+        console.print(f"[green]{message}[/green]")
         return
     table = Table(header_style="bold")
     table.add_column("Probe", no_wrap=True)

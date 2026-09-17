@@ -12,7 +12,7 @@ servers; no network unless `--online`.
 
 ## Current state (2026-09-18)
 
-- **v0.3.2 — `mcplint gate` + authenticated checks.** Anonymous battery
+- **v0.3.3 — `mcplint gate` + authenticated checks.** Anonymous battery
   (`gate_data/litellm.yaml`, 7 probes from CVE-2026-59822 ×2, -42271, -49468)
   plus `gate --auth <expectations.yaml>`: with one *test* key (env-var only),
   verifies tool-list filtering (AUTH001/002/005), `x-mcp-servers` scoping
@@ -22,7 +22,9 @@ servers; no network unless `--online`.
   injects the key + tokens from one uncommitted file; `/mcp` denials retry the
   canonical `/mcp/` path. All gate requests send `User-Agent: mcplint-gate`
   (WAFs like Cloudflare block Python-urllib with Error 1010); edge/WAF blocks
-  are detected and explained instead of being blamed on the key.
+  are detected and explained instead of being blamed on the key; an empty
+  tool inventory is reported with the two usual causes (missing `Bearer `
+  prefix, wrong `x-mcp-<alias>-*` header).
   Read-only; loopback-only unless `--allow-host`; exit 0/1/2. Tests: `tests/test_gate.py` (mock patched/vulnerable/redirect/
   erroring/overexposed/leaky-scope/leaky-read gateways).
 - First production run of the anonymous battery against a live gateway: clean

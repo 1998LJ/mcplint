@@ -648,6 +648,19 @@ def run_auth_gate(
             notes=notes,
             probes_run=1,
         )
+    if not tools:
+        notes.append(
+            GateNote(
+                probe_id="AUTH000",
+                status=status,
+                reason=(
+                    "tools/list returned an empty tool list — the key may have no MCP "
+                    "grants (LiteLLM filters ungranted servers/tools) or the upstream "
+                    "returned no tools (missing/expired upstream token, or a "
+                    "x-mcp-<alias>-* header that does not match the server alias)"
+                ),
+            )
+        )
 
     for pattern in expectations.forbidden_tools:
         hits = [t for t in tools if fnmatch.fnmatch(t.lower(), pattern.lower())]

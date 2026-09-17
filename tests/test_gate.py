@@ -91,6 +91,9 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(401)
                 return
             ua = self.headers.get("User-Agent", "")
+            if self.mode == "empty_tools":
+                self._send(200, {"jsonrpc": "2.0", "result": {"tools": []}})
+                return
             if self.mode == "cf_block":
                 self._send(
                     403,
@@ -522,3 +525,18 @@ def test_auth_mode_detects_edge_waf_block(tmp_path, monkeypatch) -> None:
     assert "edge blocked" in message
     assert "Object_permission" not in message
     assert "object_permission" not in message
+
+
+def test_auth_mode_empty_tool_list_is_reported(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(
+        _write_expectations(tmp_path, expect_tools=[])
+    )
+    with gateway("empty_tools") as target:
+        result = run_auth_gate(expectations, target)
+    assert result.findings == []
+    assert result.inventory == []
+    assert any(
+        note.probe_id == "AUTH000" and "empty tool list" in note.reason
+        for note in result.notes
+    )
