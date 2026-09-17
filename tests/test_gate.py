@@ -90,6 +90,26 @@ class _Handler(BaseHTTPRequestHandler):
             if not (self.mode in ("vulnerable", "redirect") or self._authed()):
                 self._send(401)
                 return
+            ua = self.headers.get("User-Agent", "")
+            if self.mode == "cf_block":
+                self._send(
+                    403,
+                    {
+                        "type": "https://developers.cloudflare.com/error-1010",
+                        "title": "Error 1010: Access denied",
+                    },
+                )
+                return
+            if self.mode == "requires_mcplint_ua":
+                if not ua.startswith("mcplint-gate"):
+                    self._send(
+                        403,
+                        {
+                            "title": "Error 1010: Access denied",
+                            "detail": f"blocked user agent {ua!r}",
+                        },
+                    )
+                    return
             if self.mode == "deny_no_slash" and self.path == "/mcp":
                 self._send(
                     403,
@@ -482,3 +502,23 @@ def test_env_file_missing_is_operational_error(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 2
     assert "cannot read env file" in result.output
 
+
+
+def test_auth_mode_sends_mcplint_user_agent(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(_write_expectations(tmp_path))
+    with gateway("requires_mcplint_ua") as target:
+        result = run_auth_gate(expectations, target)
+    assert result.findings == []
+    assert result.inventory == TOOLS
+
+
+def test_auth_mode_detects_edge_waf_block(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(_write_expectations(tmp_path))
+    with gateway("cf_block") as target, pytest.raises(GateError) as excinfo:
+        run_auth_gate(expectations, target)
+    message = str(excinfo.value)
+    assert "edge blocked" in message
+    assert "Object_permission" not in message
+    assert "object_permission" not in message

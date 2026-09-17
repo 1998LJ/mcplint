@@ -508,6 +508,7 @@ def _authed_call(
     headers = {
         "Accept": "application/json, text/event-stream",
         "Content-Type": "application/json",
+        "User-Agent": "mcplint-gate",
         "x-litellm-api-key": f"Bearer {key}",
         **extra_headers,
     }
@@ -580,6 +581,15 @@ def run_auth_gate(
             detail = (
                 _snip(source).replace(key, "<redacted>") if source else "no response body"
             )
+            lowered = (source or "").lower()
+            if "cloudflare" in lowered or "<html" in lowered:
+                raise GateError(
+                    f"the gateway's edge blocked the request (HTTP {status} on "
+                    f"{MCP_PATH}, {alt_status} on {MCP_PATH_ALT}): {detail} — this "
+                    "looks like a WAF/CDN bot check (e.g. Cloudflare Error 1010), "
+                    "not LiteLLM: run from the corporate network/VPN or allow the "
+                    "'mcplint-gate' user agent at the edge"
+                )
             hint = (
                 "the key is valid but not allowed to reach this MCP server (check its "
                 "object_permission.mcp_servers / mcp_tool_permissions grants, and the "
