@@ -12,8 +12,10 @@ failure class, with the CVE/advisory it comes from.
 
 from __future__ import annotations
 
+import fnmatch
 import ipaddress
 import json
+import os
 import secrets
 import urllib.error
 import urllib.parse
@@ -112,6 +114,7 @@ class GateResult:
     findings: list[GateFinding]
     notes: list[GateNote]
     probes_run: int
+    inventory: list[str] = field(default_factory=list)
 
     @property
     def worst_rank(self) -> int:
@@ -137,6 +140,7 @@ class GateResult:
                 {"probeId": n.probe_id, "status": n.status, "reason": n.reason}
                 for n in self.notes
             ],
+            "inventory": self.inventory,
         }
 
 
@@ -386,6 +390,352 @@ def run_gate(
         findings=findings,
         notes=notes,
         probes_run=len(profile.probes),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Authenticated checks: verify what a specific key is allowed to do.
+# ---------------------------------------------------------------------------
+
+MCP_PATH = "/mcp"
+
+
+@dataclass
+class ReadProbe:
+    """One opt-in read-only tool call that must be denied upstream."""
+
+    tool: str
+    args: dict = field(default_factory=dict)
+    expect: str = "deny"
+
+
+@dataclass
+class AuthExpectations:
+    key_env: str
+    target: str = ""
+    expect_tools: list[str] = field(default_factory=list)
+    forbidden_tools: list[str] = field(default_factory=list)
+    forbidden_servers: list[str] = field(default_factory=list)
+    read_probe: ReadProbe | None = None
+
+
+def load_auth_expectations(path: Path) -> AuthExpectations:
+    """Load an authenticated expectations file (YAML). Keys come from env only."""
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise GateError(f"cannot read {path}: {exc}") from exc
+    if not isinstance(data, dict) or not data.get("key"):
+        raise GateError(f"{path}: expectations need a 'key: env/VAR_NAME' entry")
+    key = str(data["key"])
+    if not key.startswith("env/"):
+        raise GateError(
+            f"{path}: key must be 'env/VAR_NAME' — a literal key never belongs in a file"
+        )
+    raw_probe = data.get("read_probe")
+    read_probe = None
+    if isinstance(raw_probe, dict) and raw_probe.get("tool"):
+        read_probe = ReadProbe(
+            tool=str(raw_probe["tool"]),
+            args=dict(raw_probe.get("args") or {}),
+            expect=str(raw_probe.get("expect", "deny")),
+        )
+    return AuthExpectations(
+        key_env=key[len("env/") :],
+        target=str(data.get("target", "")),
+        expect_tools=[str(t) for t in data.get("expect_tools", []) or []],
+        forbidden_tools=[str(t) for t in data.get("forbidden_tools", []) or []],
+        forbidden_servers=[str(s) for s in data.get("forbidden_servers", []) or []],
+        read_probe=read_probe,
+    )
+
+
+def _json_from_body(body: str) -> dict | None:
+    """Parse a JSON or SSE (data: lines) body into the first JSON object."""
+    body = body.strip()
+    if not body:
+        return None
+    try:
+        parsed = json.loads(body)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        pass
+    for line in body.splitlines():
+        line = line.strip()
+        if line.startswith("data:"):
+            try:
+                parsed = json.loads(line[len("data:") :].strip())
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+    return None
+
+
+def _tool_names(payload: dict | None) -> list[str] | None:
+    if not isinstance(payload, dict):
+        return None
+    result = payload.get("result")
+    if isinstance(result, dict) and isinstance(result.get("tools"), list):
+        return [
+            str(t["name"]) for t in result["tools"] if isinstance(t, dict) and t.get("name")
+        ]
+    return None
+
+
+def _authed_call(
+    target: str,
+    key: str,
+    method: str,
+    params: dict | None,
+    extra_headers: dict[str, str],
+    session_id: str | None,
+    timeout: float,
+) -> tuple[int, str, dict[str, str]]:
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "x-litellm-api-key": f"Bearer {key}",
+        **extra_headers,
+    }
+    if session_id:
+        headers["Mcp-Session-Id"] = session_id
+    message: dict = {"jsonrpc": "2.0", "method": method}
+    if params is not None:
+        message["params"] = params
+    if not method.startswith("notifications/"):
+        message["id"] = 1
+    return _request(
+        "POST", target + MCP_PATH, headers, json.dumps(message), timeout
+    )
+
+
+def run_auth_gate(
+    expectations: AuthExpectations,
+    target: str | None = None,
+    *,
+    allow_host: bool = False,
+    timeout: float = 5.0,
+) -> GateResult:
+    """Verify what a single (test) key is allowed to see and reach. Read-only."""
+    key = os.environ.get(expectations.key_env)
+    if not key:
+        raise GateError(
+            f"environment variable {expectations.key_env} is not set "
+            "(the key is read from the environment, never from the file)"
+        )
+    normalized = normalize_target(
+        target or expectations.target or "http://localhost:4000"
+    )
+    check_target_allowed(normalized, allow_host)
+
+    findings: list[GateFinding] = []
+    notes: list[GateNote] = []
+
+    status, _, resp_headers = _authed_call(
+        normalized,
+        key,
+        "initialize",
+        {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "mcplint-gate", "version": "0.3.0"},
+        },
+        {},
+        None,
+        timeout,
+    )
+    if status in DENY_CODES:
+        raise GateError(
+            f"the test key was rejected by the gateway (HTTP {status}); "
+            "check the key and its object_permission grants"
+        )
+    session_id = resp_headers.get("Mcp-Session-Id")
+    if 200 <= status < 300 and session_id:
+        _authed_call(
+            normalized, key, "notifications/initialized", None, {}, session_id, timeout
+        )
+
+    status, body, _ = _authed_call(
+        normalized, key, "tools/list", None, {}, session_id, timeout
+    )
+    tools = _tool_names(_json_from_body(body))
+    if tools is None:
+        notes.append(
+            GateNote(
+                probe_id="AUTH000",
+                status=status,
+                reason="could not parse a tools/list response with the test key",
+            )
+        )
+        return GateResult(
+            profile="auth",
+            target=normalized,
+            findings=findings,
+            notes=notes,
+            probes_run=1,
+        )
+
+    for pattern in expectations.forbidden_tools:
+        hits = [t for t in tools if fnmatch.fnmatch(t.lower(), pattern.lower())]
+        if hits:
+            findings.append(
+                GateFinding(
+                    probe_id="AUTH001",
+                    severity=Severity.HIGH,
+                    title=f"Test key can see tools matching forbidden pattern {pattern!r}",
+                    target=normalized,
+                    status=status,
+                    evidence=f"matched: {', '.join(hits[:8])}",
+                    remediation=(
+                        "Scope the key down with object_permission.mcp_tool_permissions "
+                        "(or allowed_tools/disallowed_tools on the server) and remove "
+                        "allow_all_keys from the MCP server registration."
+                    ),
+                    owasp="MCP07:2025 - Insufficient Authentication & Authorization",
+                )
+            )
+
+    if expectations.expect_tools:
+        expected = set(expectations.expect_tools)
+        extras = sorted(set(tools) - expected)
+        missing = sorted(expected - set(tools))
+        if extras:
+            findings.append(
+                GateFinding(
+                    probe_id="AUTH002",
+                    severity=Severity.MEDIUM,
+                    title="Test key sees tools outside the expected allowlist",
+                    target=normalized,
+                    status=status,
+                    evidence=f"unexpected: {', '.join(extras[:8])}",
+                    remediation=(
+                        "Either extend expect_tools in the expectations file or tighten "
+                        "the key's mcp_tool_permissions — an invited user should only see "
+                        "the tools its use case needs."
+                    ),
+                    owasp="MCP07:2025 - Insufficient Authentication & Authorization",
+                )
+            )
+        if missing:
+            findings.append(
+                GateFinding(
+                    probe_id="AUTH005",
+                    severity=Severity.LOW,
+                    title="Expected tools are missing for the test key",
+                    target=normalized,
+                    status=status,
+                    evidence=f"missing: {', '.join(missing[:8])}",
+                    remediation=(
+                        "Check the server registration and the key's permissions; a "
+                        "missing expected tool usually means a config drift."
+                    ),
+                    owasp="MCP07:2025 - Insufficient Authentication & Authorization",
+                )
+            )
+
+    for server in expectations.forbidden_servers:
+        scope_status, scope_body, _ = _authed_call(
+            normalized,
+            key,
+            "tools/list",
+            None,
+            {"x-mcp-servers": server},
+            session_id,
+            timeout,
+        )
+        names = _tool_names(_json_from_body(scope_body))
+        if scope_status in DENY_CODES or (200 <= scope_status < 300 and not names):
+            continue
+        if 200 <= scope_status < 300 and names:
+            findings.append(
+                GateFinding(
+                    probe_id="AUTH003",
+                    severity=Severity.HIGH,
+                    title=(
+                        "x-mcp-servers scoping not enforced "
+                        f"(requested {server!r}, got tools back)"
+                    ),
+                    target=normalized,
+                    status=scope_status,
+                    evidence=f"HTTP {scope_status}, {len(names)} tool(s): {', '.join(names[:5])}",
+                    remediation=(
+                        "The key must not receive tools from servers it is not granted; "
+                        "check object_permission.mcp_servers for this key/team and the "
+                        "server's allow_all_keys setting."
+                    ),
+                    owasp="MCP07:2025 - Insufficient Authentication & Authorization",
+                )
+            )
+        else:
+            notes.append(
+                GateNote(
+                    probe_id="AUTH003",
+                    status=scope_status,
+                    reason=f"scope probe for {server!r} was inconclusive",
+                )
+            )
+
+    if expectations.read_probe is not None:
+        probe = expectations.read_probe
+        call_status, call_body, _ = _authed_call(
+            normalized,
+            key,
+            "tools/call",
+            {"name": probe.tool, "arguments": probe.args},
+            {},
+            session_id,
+            timeout,
+        )
+        payload = _json_from_body(call_body)
+        result = payload.get("result") if isinstance(payload, dict) else None
+        denied = (
+            call_status in DENY_CODES
+            or call_status >= 400
+            or (isinstance(payload, dict) and isinstance(payload.get("error"), dict))
+            or (isinstance(result, dict) and result.get("isError") is True)
+        )
+        if not denied and isinstance(result, dict):
+            findings.append(
+                GateFinding(
+                    probe_id="AUTH004",
+                    severity=Severity.CRITICAL,
+                    title=(
+                        f"Read probe returned data for {probe.tool!r} "
+                        "(the test user must not have access)"
+                    ),
+                    target=normalized,
+                    status=call_status,
+                    evidence=(
+                        f"HTTP {call_status} · result present (content redacted)"
+                    ),
+                    remediation=(
+                        "The upstream returned content for an object the test user is "
+                        "not allowed to read: per-user passthrough is widening access. "
+                        "Verify the Confluence/upstream permissions for the test user "
+                        "and the gateway's outbound auth mode (prefer token exchange "
+                        "over verbatim passthrough)."
+                    ),
+                    cve="CVE-2026-59822",
+                    owasp="MCP07:2025 - Insufficient Authentication & Authorization",
+                )
+            )
+        elif not denied:
+            notes.append(
+                GateNote(
+                    probe_id="AUTH004",
+                    status=call_status,
+                    reason="read probe response could not be interpreted",
+                )
+            )
+
+    return GateResult(
+        profile="auth",
+        target=normalized,
+        findings=findings,
+        notes=notes,
+        probes_run=1 + len(expectations.forbidden_servers) + (1 if expectations.read_probe else 0),
+        inventory=tools,
     )
 
 

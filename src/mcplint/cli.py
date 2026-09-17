@@ -13,7 +13,15 @@ from rich.table import Table
 from . import __version__
 from .aibom import build_aibom
 from .discovery import discover
-from .gate import GateError, GateResult, load_profile, result_to_json, run_gate
+from .gate import (
+    GateError,
+    GateResult,
+    load_auth_expectations,
+    load_profile,
+    result_to_json,
+    run_auth_gate,
+    run_gate,
+)
 from .lockfile import LOCKFILE_NAME, build_lock, load_lock, verify_lock, write_lock
 from .models import ScanResult, severity_from
 from .parse import parse_config_file
@@ -189,6 +197,16 @@ def _render_gate(result: GateResult, console: Console) -> None:
         f"[bold]mcplint gate[/bold] profile={result.profile} target={result.target} "
         f"({result.probes_run} probe(s), read-only)"
     )
+    if result.inventory:
+        shown = ", ".join(result.inventory[:20])
+        extra = (
+            ""
+            if len(result.inventory) <= 20
+            else f" … (+{len(result.inventory) - 20} more)"
+        )
+        console.print(
+            f"[dim]test key sees {len(result.inventory)} tool(s):[/dim] {shown}{extra}"
+        )
     if not result.findings:
         console.print(
             "[green]No findings: authentication was enforced on every probed endpoint.[/green]"
@@ -223,6 +241,12 @@ def gate(
         None, help="Gateway base URL (default: the profile's, e.g. http://localhost:4000)."
     ),
     profile: str = typer.Option("litellm", "--profile", help="Probe profile to run."),
+    auth: Path = typer.Option(
+        None,
+        "--auth",
+        help="Run authenticated read-only checks using this expectations file "
+        "(see gate_data/auth-expectations.example.yaml).",
+    ),
     profiles_dir: list[Path] = typer.Option(
         None, "--profiles-dir", help="Extra profile directory (repeatable)."
     ),
@@ -242,16 +266,23 @@ def gate(
 ) -> None:
     """Probe a running MCP gateway for missing authentication (read-only).
 
-    Sends a small battery of unauthenticated requests to MCP and management
-    endpoints you point it at and checks that each one is denied. It never
-    calls tools and never changes state. Only loopback targets are allowed
-    unless --allow-host is given.
+    By default, sends a battery of unauthenticated requests and checks each one
+    is denied. With --auth, uses one (test) key from an environment variable to
+    verify what that key is allowed to see and reach. It never calls write
+    tools and never changes state. Only loopback targets are allowed unless
+    --allow-host is given.
     """
     try:
-        effective_profile = load_profile(profile, extra_dirs=profiles_dir)
-        result = run_gate(
-            effective_profile, target, allow_host=allow_host, timeout=timeout
-        )
+        if auth is not None:
+            expectations = load_auth_expectations(auth)
+            result = run_auth_gate(
+                expectations, target, allow_host=allow_host, timeout=timeout
+            )
+        else:
+            effective_profile = load_profile(profile, extra_dirs=profiles_dir)
+            result = run_gate(
+                effective_profile, target, allow_host=allow_host, timeout=timeout
+            )
     except GateError as exc:
         err_console.print(f"[red]gate error:[/red] {exc}")
         raise typer.Exit(code=2) from exc

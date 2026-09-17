@@ -143,6 +143,33 @@ Lab-verified against real LiteLLM releases: patched **1.100.0** denies every
 probe; pre-fix **1.83.14** errors instead of denying on the MCP routes —
 see [`research/gate-lab-verification.md`](research/gate-lab-verification.md).
 
+### Authenticated checks (`gate --auth`)
+
+The anonymous battery answers "can strangers get in?". The authenticated mode
+answers the harder question for shared gateways: **does this key get exactly
+what it should?** — with a *test* key, still read-only.
+
+```bash
+export LITELLM_TEST_KEY=sk-...           # dedicated test key, not a person's
+uvx mcplint-sec gate --auth expectations.yaml https://gateway.internal --allow-host
+```
+
+Expectations are data (see
+[`gate_data/auth-expectations.example.yaml`](src/mcplint/gate_data/auth-expectations.example.yaml)):
+
+| Check | Configuration | Severity |
+| --- | --- | --- |
+| AUTH001 | tools matching `forbidden_tools` patterns are visible to the key | high |
+| AUTH002 | tools outside the strict `expect_tools` allowlist are visible | medium |
+| AUTH003 | `x-mcp-servers` scoping not enforced (`forbidden_servers`) | high |
+| AUTH004 | opt-in `read_probe` returned data for an object the test user cannot access | critical |
+| AUTH005 | an expected tool is missing (config drift) | low |
+
+Safety: the key is read **from an environment variable only** (a literal key in
+the file is rejected) and is never printed; no tool calls happen unless
+`read_probe` is explicitly configured; returned content is never echoed
+(redacted in evidence). Use a dedicated test key that maps to a test user.
+
 ## GitHub Actions
 
 ```yaml

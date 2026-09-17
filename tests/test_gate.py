@@ -8,13 +8,22 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from mcplint.cli import app
-from mcplint.gate import GateError, _render, load_profile, run_gate
+from mcplint.gate import (
+    GateError,
+    _render,
+    load_auth_expectations,
+    load_profile,
+    run_auth_gate,
+    run_gate,
+)
 
 runner = CliRunner()
 KEY = "sk-valid-test-key"
+TOOLS = ["confluence.search", "confluence.get_page"]
 SEEN: list[dict] = []
 
 
@@ -33,6 +42,15 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _body(self) -> dict:
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        try:
+            parsed = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
 
     def _authed(self) -> bool:
         for name in ("Authorization", "x-litellm-api-key"):
@@ -67,10 +85,36 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path in ("/mcp", "/mcp/"):
             if self.mode == "erroring":
                 self._send(500, {"detail": "Internal Server Error"})
+                return
+            if not (self.mode in ("vulnerable", "redirect") or self._authed()):
+                self._send(401)
+                return
+            method = self._body().get("method", "")
+            if method == "tools/list":
+                if self.headers.get("x-mcp-servers") and self.mode != "leaky_scope":
+                    self._send(401)
+                    return
+                tools = [{"name": name} for name in TOOLS]
+                if self.mode == "overexposed":
+                    tools.append({"name": "confluence.delete_page"})
+                self._send(200, {"jsonrpc": "2.0", "result": {"tools": tools}})
+            elif method == "tools/call":
+                if self.mode == "leaky_read":
+                    self._send(
+                        200,
+                        {
+                            "jsonrpc": "2.0",
+                            "result": {
+                                "content": [{"type": "text", "text": "redacted-secret"}]
+                            },
+                        },
+                    )
+                else:
+                    self._send(
+                        200, {"jsonrpc": "2.0", "result": {"isError": True, "content": []}}
+                    )
             else:
-                self._send(
-                    200 if (self.mode in ("vulnerable", "redirect") or self._authed()) else 401
-                )
+                self._send(200, {})
         elif self.path == "/mcp-rest/test/connection":
             self._send(401)  # admin-only in every version we support
         else:
@@ -193,3 +237,104 @@ def test_cli_refuses_remote_target_with_exit_code_two() -> None:
     result = runner.invoke(app, ["gate", "http://gateway.example.com"])
     assert result.exit_code == 2
     assert "allow-host" in result.output
+
+
+# --- authenticated checks (mcplint gate --auth) ---
+
+
+def _write_expectations(tmp_path, **overrides):
+    data = {
+        "target": "http://127.0.0.1:1",
+        "key": "env/MCPLINT_TEST_KEY",
+        "expect_tools": ["confluence.search", "confluence.get_page"],
+        "forbidden_tools": ["*delete*"],
+        "forbidden_servers": ["github"],
+    }
+    data.update(overrides)
+    path = tmp_path / "auth.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return path
+
+
+def test_auth_mode_clean_key(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(_write_expectations(tmp_path))
+    with gateway("auth") as target:
+        result = run_auth_gate(expectations, target)
+    assert result.findings == [], [f.to_dict() for f in result.findings]
+    assert result.inventory == TOOLS
+
+
+def test_auth_mode_flags_forbidden_and_extra_tools(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(_write_expectations(tmp_path))
+    with gateway("overexposed") as target:
+        result = run_auth_gate(expectations, target)
+    flagged = {f.probe_id: f for f in result.findings}
+    assert "AUTH001" in flagged and flagged["AUTH001"].severity.value == "high"
+    assert "AUTH002" in flagged and flagged["AUTH002"].severity.value == "medium"
+
+
+def test_auth_mode_flags_scope_leak(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(_write_expectations(tmp_path))
+    with gateway("leaky_scope") as target:
+        result = run_auth_gate(expectations, target)
+    flagged = {f.probe_id for f in result.findings}
+    assert "AUTH003" in flagged
+
+
+def test_auth_mode_read_probe_leak_is_redacted(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(
+        _write_expectations(
+            tmp_path,
+            read_probe={
+                "tool": "confluence.get_page",
+                "args": {"page_id": "00000000"},
+                "expect": "deny",
+            },
+        )
+    )
+    with gateway("leaky_read") as target:
+        result = run_auth_gate(expectations, target)
+    auth004 = next(f for f in result.findings if f.probe_id == "AUTH004")
+    assert auth004.severity.value == "critical"
+    assert "redacted-secret" not in auth004.evidence
+
+
+def test_auth_mode_read_probe_denied_is_clean(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(
+        _write_expectations(
+            tmp_path,
+            read_probe={"tool": "confluence.get_page", "args": {}, "expect": "deny"},
+        )
+    )
+    with gateway("auth") as target:
+        result = run_auth_gate(expectations, target)
+    assert all(f.probe_id != "AUTH004" for f in result.findings)
+
+
+def test_auth_mode_requires_key_in_environment(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("MCPLINT_TEST_KEY", raising=False)
+    expectations = load_auth_expectations(_write_expectations(tmp_path))
+    with gateway("auth") as target, pytest.raises(GateError, match="MCPLINT_TEST_KEY"):
+        run_auth_gate(expectations, target)
+
+
+def test_auth_expectations_reject_literal_key(tmp_path) -> None:
+    path = _write_expectations(tmp_path, key="sk-literal-key")
+    with pytest.raises(GateError, match="env/"):
+        load_auth_expectations(path)
+
+
+def test_auth_cli_clean_and_key_never_printed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    path = _write_expectations(tmp_path)
+    with gateway("auth") as target:
+        result = runner.invoke(app, ["gate", target, "--auth", str(path), "--json"])
+    assert result.exit_code == 0, result.output
+    assert "No findings" in result.output or '"total": 0' in result.output
+    assert KEY not in result.output
+    assert "confluence.search" in result.output
