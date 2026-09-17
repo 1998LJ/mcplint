@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import typer
@@ -17,6 +18,7 @@ from .gate import (
     GateError,
     GateResult,
     load_auth_expectations,
+    load_env_file,
     load_profile,
     result_to_json,
     run_auth_gate,
@@ -250,6 +252,12 @@ def gate(
     profiles_dir: list[Path] = typer.Option(
         None, "--profiles-dir", help="Extra profile directory (repeatable)."
     ),
+    env_file: Path = typer.Option(
+        None,
+        "--env-file",
+        help="Load KEY=VALUE secrets from this file (existing environment wins; "
+        "keep the file out of version control).",
+    ),
     allow_host: bool = typer.Option(
         False,
         "--allow-host",
@@ -273,6 +281,9 @@ def gate(
     --allow-host is given.
     """
     try:
+        if env_file is not None:
+            for name, value in load_env_file(env_file).items():
+                os.environ.setdefault(name, value)
         if auth is not None:
             expectations = load_auth_expectations(auth)
             result = run_auth_gate(
@@ -293,8 +304,7 @@ def gate(
         _render_gate(result, console)
         for note in result.notes:
             console.print(
-                f"[dim]· {note.probe_id}: inconclusive — {note.reason} "
-                f"(HTTP {note.status})[/dim]"
+                f"[dim]· {note.probe_id}: {note.reason} (HTTP {note.status})[/dim]"
             )
 
     threshold = fail_on.lower()

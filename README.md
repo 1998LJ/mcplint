@@ -152,6 +152,9 @@ what it should?** — with a *test* key, still read-only.
 ```bash
 export LITELLM_TEST_KEY=sk-...           # dedicated test key, not a person's
 uvx mcplint-sec gate --auth expectations.yaml https://gateway.internal --allow-host
+
+# or keep every secret in one uncommitted file instead of exporting:
+uvx mcplint-sec gate --auth expectations.yaml --env-file .env.local --allow-host
 ```
 
 Expectations are data (see
@@ -165,10 +168,24 @@ Expectations are data (see
 | AUTH004 | opt-in `read_probe` returned data for an object the test user cannot access | critical |
 | AUTH005 | an expected tool is missing (config drift) | low |
 
-Safety: the key is read **from an environment variable only** (a literal key in
-the file is rejected) and is never printed; no tool calls happen unless
-`read_probe` is explicitly configured; returned content is never echoed
-(redacted in evidence). Use a dedicated test key that maps to a test user.
+Per-user gateways (Confluence-style) can forward the test user's upstream token
+with `upstream_headers` (also env-referenced, never literal):
+
+```yaml
+upstream_headers:
+  x-mcp-confluence-authorization: env/ATLASSIAN_USER_TOKEN
+```
+
+If a gateway denies `/mcp` because its route patterns only match `/mcp/`, gate
+retries the canonical path automatically.
+
+Safety: the key and every `upstream_headers` value are read **from environment
+variables only** (literals in the file are rejected) and are never printed; no
+tool calls happen unless `read_probe` is explicitly configured; returned content
+is never echoed (redacted in evidence). `--env-file FILE` is a convenience for
+injecting the key and per-server tokens (existing environment variables win;
+keep that file out of version control). Use a dedicated test key that maps to a
+test user.
 
 ## GitHub Actions
 

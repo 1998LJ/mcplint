@@ -16,6 +16,7 @@ from mcplint.gate import (
     GateError,
     _render,
     load_auth_expectations,
+    load_env_file,
     load_profile,
     run_auth_gate,
     run_gate,
@@ -89,8 +90,24 @@ class _Handler(BaseHTTPRequestHandler):
             if not (self.mode in ("vulnerable", "redirect") or self._authed()):
                 self._send(401)
                 return
+            if self.mode == "deny_no_slash" and self.path == "/mcp":
+                self._send(
+                    403,
+                    {"error": {"message": "Virtual key is not allowed to call this route"}},
+                )
+                return
+            if self.mode == "needs_upstream" and not self.headers.get(
+                "x-mcp-lab-authorization"
+            ):
+                self._send(401)
+                return
             method = self._body().get("method", "")
-            if method == "tools/list":
+            if self.mode == "forbidden":
+                self._send(
+                    403,
+                    {"error": {"message": "Key not allowed to access MCP server 'confluence'"}},
+                )
+            elif method == "tools/list":
                 if self.headers.get("x-mcp-servers") and self.mode != "leaky_scope":
                     self._send(401)
                     return
@@ -338,3 +355,130 @@ def test_auth_cli_clean_and_key_never_printed(tmp_path, monkeypatch) -> None:
     assert "No findings" in result.output or '"total": 0' in result.output
     assert KEY not in result.output
     assert "confluence.search" in result.output
+
+
+def test_auth_403_includes_gateway_reason(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(_write_expectations(tmp_path))
+    with gateway("forbidden") as target, pytest.raises(GateError) as excinfo:
+        run_auth_gate(expectations, target)
+    message = str(excinfo.value)
+    assert "403" in message
+    assert "not allowed to access MCP server" in message
+    assert KEY not in message
+
+
+def test_auth_mode_falls_back_to_canonical_mcp_path(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(_write_expectations(tmp_path))
+    with gateway("deny_no_slash") as target:
+        result = run_auth_gate(expectations, target)
+    assert result.findings == []
+    assert result.inventory == TOOLS
+    assert any("canonical" in note.reason for note in result.notes)
+
+
+def test_auth_mode_sends_upstream_headers_from_env(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    monkeypatch.setenv("LAB_UPSTREAM_TOKEN", "atlassian-user-token")
+    expectations = load_auth_expectations(
+        _write_expectations(
+            tmp_path,
+            upstream_headers={"x-mcp-lab-authorization": "env/LAB_UPSTREAM_TOKEN"},
+        )
+    )
+    with gateway("needs_upstream") as target:
+        result = run_auth_gate(expectations, target)
+    assert result.findings == []
+
+
+def test_auth_mode_upstream_header_env_missing(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    monkeypatch.delenv("LAB_UPSTREAM_TOKEN", raising=False)
+    expectations = load_auth_expectations(
+        _write_expectations(
+            tmp_path,
+            upstream_headers={"x-mcp-lab-authorization": "env/LAB_UPSTREAM_TOKEN"},
+        )
+    )
+    with gateway("needs_upstream") as target, pytest.raises(
+        GateError, match="LAB_UPSTREAM_TOKEN"
+    ):
+        run_auth_gate(expectations, target)
+
+
+def test_auth_expectations_reject_literal_upstream_header(tmp_path) -> None:
+    with pytest.raises(GateError, match="env/"):
+        load_auth_expectations(
+            _write_expectations(
+                tmp_path,
+                upstream_headers={"x-mcp-lab-authorization": "literal-token"},
+            )
+        )
+
+
+def test_env_file_parsing(tmp_path) -> None:
+    path = tmp_path / "tokens"
+    path.write_text(
+        "# comment\n\nexport MCPLINT_TEST_KEY='sk-quoted'\nOTHER=plain  \nEMPTY=\n",
+        encoding="utf-8",
+    )
+    values = load_env_file(path)
+    assert values == {"MCPLINT_TEST_KEY": "sk-quoted", "OTHER": "plain", "EMPTY": ""}
+
+
+def test_env_file_bad_line(tmp_path) -> None:
+    path = tmp_path / "tokens"
+    path.write_text("NOT_A_PAIR\n", encoding="utf-8")
+    with pytest.raises(GateError, match="KEY=VALUE"):
+        load_env_file(path)
+
+
+def test_env_file_supplies_key_and_upstream(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("MCPLINT_TEST_KEY", raising=False)
+    monkeypatch.delenv("LAB_UPSTREAM_TOKEN", raising=False)
+    env_path = tmp_path / "tokens"
+    env_path.write_text(
+        f"MCPLINT_TEST_KEY={KEY}\nLAB_UPSTREAM_TOKEN=atlassian-user-token\n",
+        encoding="utf-8",
+    )
+    expectations = _write_expectations(
+        tmp_path,
+        upstream_headers={"x-mcp-lab-authorization": "env/LAB_UPSTREAM_TOKEN"},
+    )
+    with gateway("needs_upstream") as target:
+        result = runner.invoke(
+            app,
+            [
+                "gate",
+                target,
+                "--auth",
+                str(expectations),
+                "--env-file",
+                str(env_path),
+                "--json",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    assert '"total": 0' in result.output
+    assert KEY not in result.output
+
+
+def test_env_file_missing_is_operational_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = _write_expectations(tmp_path)
+    with gateway("auth") as target:
+        result = runner.invoke(
+            app,
+            [
+                "gate",
+                target,
+                "--auth",
+                str(expectations),
+                "--env-file",
+                str(tmp_path / "does-not-exist"),
+            ],
+        )
+    assert result.exit_code == 2
+    assert "cannot read env file" in result.output
+

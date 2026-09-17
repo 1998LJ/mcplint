@@ -1,8 +1,12 @@
 # Example expectations for authenticated checks:
 #   mcplint gate --auth auth-expectations.yaml https://your-gateway --allow-host
 #
-# Copy this file, set your target, and edit the lists. The key is read from the
-# environment only — never put a real credential in this file.
+# Prefer --env-file over exporting secrets by hand:
+#   mcplint gate --auth auth-expectations.yaml --env-file .env.local --allow-host
+#
+# Copy this file, set your target, and edit the lists. The key (and any
+# upstream token) is read from the environment only — never put a credential
+# in this file. Only the variables this file references must exist.
 #
 # Checks performed (all read-only):
 #   AUTH001 forbidden_tools visible to the key        (high)
@@ -31,6 +35,12 @@ forbidden_tools:
 # Servers this key must not reach; probed with the x-mcp-servers header.
 forbidden_servers:
   - github
+
+# OPTIONAL: headers forwarded to the upstream MCP server (per-user tokens).
+# Values are read from the environment — never put a token in this file.
+# Example (LiteLLM per-user passthrough to a Confluence MCP server):
+# upstream_headers:
+#   x-mcp-confluence-authorization: env/ATLASSIAN_USER_TOKEN
 
 # OPTIONAL and opt-in: one read-only tool call that must be denied upstream —
 # use an object (page, issue, record) the test user is NOT allowed to access.

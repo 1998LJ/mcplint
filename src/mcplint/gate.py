@@ -398,6 +398,7 @@ def run_gate(
 # ---------------------------------------------------------------------------
 
 MCP_PATH = "/mcp"
+MCP_PATH_ALT = "/mcp/"  # LiteLLM route patterns often only match the canonical /mcp/
 
 
 @dataclass
@@ -417,6 +418,8 @@ class AuthExpectations:
     forbidden_tools: list[str] = field(default_factory=list)
     forbidden_servers: list[str] = field(default_factory=list)
     read_probe: ReadProbe | None = None
+    # header name -> environment variable name (values are never stored literally)
+    upstream_headers: dict[str, str] = field(default_factory=dict)
 
 
 def load_auth_expectations(path: Path) -> AuthExpectations:
@@ -440,6 +443,14 @@ def load_auth_expectations(path: Path) -> AuthExpectations:
             args=dict(raw_probe.get("args") or {}),
             expect=str(raw_probe.get("expect", "deny")),
         )
+    upstream_headers: dict[str, str] = {}
+    for header, value in (data.get("upstream_headers") or {}).items():
+        if not str(value).startswith("env/"):
+            raise GateError(
+                f"{path}: upstream_headers[{header!r}] must be 'env/VAR_NAME' "
+                "— token values never belong in a file"
+            )
+        upstream_headers[str(header)] = str(value)[len("env/") :]
     return AuthExpectations(
         key_env=key[len("env/") :],
         target=str(data.get("target", "")),
@@ -447,6 +458,7 @@ def load_auth_expectations(path: Path) -> AuthExpectations:
         forbidden_tools=[str(t) for t in data.get("forbidden_tools", []) or []],
         forbidden_servers=[str(s) for s in data.get("forbidden_servers", []) or []],
         read_probe=read_probe,
+        upstream_headers=upstream_headers,
     )
 
 
@@ -491,6 +503,7 @@ def _authed_call(
     extra_headers: dict[str, str],
     session_id: str | None,
     timeout: float,
+    path: str = MCP_PATH,
 ) -> tuple[int, str, dict[str, str]]:
     headers = {
         "Accept": "application/json, text/event-stream",
@@ -505,9 +518,7 @@ def _authed_call(
         message["params"] = params
     if not method.startswith("notifications/"):
         message["id"] = 1
-    return _request(
-        "POST", target + MCP_PATH, headers, json.dumps(message), timeout
-    )
+    return _request("POST", target + path, headers, json.dumps(message), timeout)
 
 
 def run_auth_gate(
@@ -524,6 +535,16 @@ def run_auth_gate(
             f"environment variable {expectations.key_env} is not set "
             "(the key is read from the environment, never from the file)"
         )
+    resolved_upstream: dict[str, str] = {}
+    for header, env_name in expectations.upstream_headers.items():
+        value = os.environ.get(env_name)
+        if not value:
+            raise GateError(
+                f"environment variable {env_name} is not set "
+                f"(needed for the upstream header {header!r})"
+            )
+        resolved_upstream[header] = value
+
     normalized = normalize_target(
         target or expectations.target or "http://localhost:4000"
     )
@@ -532,33 +553,75 @@ def run_auth_gate(
     findings: list[GateFinding] = []
     notes: list[GateNote] = []
 
-    status, _, resp_headers = _authed_call(
-        normalized,
-        key,
-        "initialize",
-        {
-            "protocolVersion": "2025-06-18",
-            "capabilities": {},
-            "clientInfo": {"name": "mcplint-gate", "version": "0.3.0"},
-        },
-        {},
-        None,
-        timeout,
+    init_params = {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "mcplint-gate", "version": "0.3.1"},
+    }
+    path = MCP_PATH
+    status, body, resp_headers = _authed_call(
+        normalized, key, "initialize", init_params, resolved_upstream, None, timeout, path
     )
     if status in DENY_CODES:
-        raise GateError(
-            f"the test key was rejected by the gateway (HTTP {status}); "
-            "check the key and its object_permission grants"
+        # LiteLLM route permissions often only match the canonical /mcp/ path;
+        # retry there before concluding the key is not allowed.
+        alt_status, alt_body, alt_headers = _authed_call(
+            normalized,
+            key,
+            "initialize",
+            init_params,
+            resolved_upstream,
+            None,
+            timeout,
+            MCP_PATH_ALT,
         )
-    session_id = resp_headers.get("Mcp-Session-Id")
-    if 200 <= status < 300 and session_id:
-        _authed_call(
-            normalized, key, "notifications/initialized", None, {}, session_id, timeout
+        if alt_status in DENY_CODES:
+            source = alt_body or body
+            detail = (
+                _snip(source).replace(key, "<redacted>") if source else "no response body"
+            )
+            hint = (
+                "the key is valid but not allowed to reach this MCP server (check its "
+                "object_permission.mcp_servers / mcp_tool_permissions grants, and the "
+                "key type's allowed_routes)"
+                if 403 in (status, alt_status)
+                else "the key was not accepted (401); verify the key value and header"
+            )
+            raise GateError(
+                f"gateway rejected the test key (HTTP {status} on {MCP_PATH}, "
+                f"{alt_status} on {MCP_PATH_ALT}): {detail} — {hint}"
+            )
+        path, status, body, resp_headers = MCP_PATH_ALT, alt_status, alt_body, alt_headers
+        notes.append(
+            GateNote(
+                probe_id="AUTH000",
+                status=alt_status,
+                reason=(
+                    f"{MCP_PATH} returned a denial; using the canonical "
+                    f"{MCP_PATH_ALT} for this gateway"
+                ),
+            )
         )
 
-    status, body, _ = _authed_call(
-        normalized, key, "tools/list", None, {}, session_id, timeout
-    )
+    def call(
+        method: str, params: dict | None, extra: dict[str, str], session_id: str | None
+    ) -> tuple[int, str, dict[str, str]]:
+        return _authed_call(
+            normalized,
+            key,
+            method,
+            params,
+            {**resolved_upstream, **extra},
+            session_id,
+            timeout,
+            path,
+        )
+
+    session_id = resp_headers.get("Mcp-Session-Id")
+    if 200 <= status < 300 and session_id:
+        call("notifications/initialized", None, {}, session_id)
+
+    status, body, _ = call("tools/list", None, {}, session_id)
     tools = _tool_names(_json_from_body(body))
     if tools is None:
         notes.append(
@@ -635,14 +698,8 @@ def run_auth_gate(
             )
 
     for server in expectations.forbidden_servers:
-        scope_status, scope_body, _ = _authed_call(
-            normalized,
-            key,
-            "tools/list",
-            None,
-            {"x-mcp-servers": server},
-            session_id,
-            timeout,
+        scope_status, scope_body, _ = call(
+            "tools/list", None, {"x-mcp-servers": server}, session_id
         )
         names = _tool_names(_json_from_body(scope_body))
         if scope_status in DENY_CODES or (200 <= scope_status < 300 and not names):
@@ -678,14 +735,11 @@ def run_auth_gate(
 
     if expectations.read_probe is not None:
         probe = expectations.read_probe
-        call_status, call_body, _ = _authed_call(
-            normalized,
-            key,
+        call_status, call_body, _ = call(
             "tools/call",
             {"name": probe.tool, "arguments": probe.args},
             {},
             session_id,
-            timeout,
         )
         payload = _json_from_body(call_body)
         result = payload.get("result") if isinstance(payload, dict) else None
@@ -737,6 +791,34 @@ def run_auth_gate(
         probes_run=1 + len(expectations.forbidden_servers) + (1 if expectations.read_probe else 0),
         inventory=tools,
     )
+
+
+def load_env_file(path: Path) -> dict[str, str]:
+    """Parse a KEY=VALUE env file (blank lines, # comments, optional quotes).
+
+    Used for --env-file: keeps the key and every upstream token out of shell
+    history and out of the expectations file. Existing environment variables
+    take precedence (the caller should apply with setdefault).
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise GateError(f"cannot read env file {path}: {exc}") from exc
+    values: dict[str, str] = {}
+    for lineno, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :]
+        if "=" not in line:
+            raise GateError(f"{path}:{lineno}: expected KEY=VALUE")
+        name, _, value = line.partition("=")
+        name = name.strip()
+        if not name:
+            raise GateError(f"{path}:{lineno}: empty variable name")
+        values[name] = value.strip().strip("'\"")
+    return values
 
 
 def result_to_json(result: GateResult) -> str:
