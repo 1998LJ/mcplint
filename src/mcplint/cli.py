@@ -13,6 +13,7 @@ from rich.table import Table
 from . import __version__
 from .aibom import build_aibom
 from .discovery import discover
+from .gate import GateError, GateResult, load_profile, result_to_json, run_gate
 from .lockfile import LOCKFILE_NAME, build_lock, load_lock, verify_lock, write_lock
 from .models import ScanResult, severity_from
 from .parse import parse_config_file
@@ -169,6 +170,104 @@ def scan(
 
     threshold = fail_on or str(file_config.get("fail_on", "high"))
     if threshold.lower() != "none" and result.findings:
+        limit = severity_from(threshold)
+        if result.worst_rank <= limit.rank:
+            raise typer.Exit(code=1)
+
+
+SEVERITY_COLORS = {
+    "critical": "red",
+    "high": "orange1",
+    "medium": "yellow",
+    "low": "cyan",
+    "info": "dim",
+}
+
+
+def _render_gate(result: GateResult, console: Console) -> None:
+    console.print(
+        f"[bold]mcplint gate[/bold] profile={result.profile} target={result.target} "
+        f"({result.probes_run} probe(s), read-only)"
+    )
+    if not result.findings:
+        console.print(
+            "[green]No findings: authentication was enforced on every probed endpoint.[/green]"
+        )
+        return
+    table = Table(header_style="bold")
+    table.add_column("Probe", no_wrap=True)
+    table.add_column("Severity", no_wrap=True)
+    table.add_column("HTTP", no_wrap=True)
+    table.add_column("Finding")
+    for finding in sorted(result.findings, key=lambda f: f.severity.rank):
+        color = SEVERITY_COLORS.get(finding.severity.value, "white")
+        table.add_row(
+            finding.probe_id,
+            f"[{color}]{finding.severity.value}[/{color}]",
+            str(finding.status),
+            finding.title,
+        )
+    console.print(table)
+    for finding in sorted(result.findings, key=lambda f: f.severity.rank):
+        refs = " · ".join(part for part in (finding.cve, finding.owasp) if part)
+        console.print(f"\n[bold]{finding.probe_id}[/bold] {finding.title}")
+        if refs:
+            console.print(f"  [dim]{refs}[/dim]")
+        console.print(f"  [dim]evidence:[/dim] {finding.evidence or '(empty body)'}")
+        console.print(f"  [bold]Fix:[/bold] {finding.remediation.strip()}")
+
+
+@app.command()
+def gate(
+    target: str = typer.Argument(
+        None, help="Gateway base URL (default: the profile's, e.g. http://localhost:4000)."
+    ),
+    profile: str = typer.Option("litellm", "--profile", help="Probe profile to run."),
+    profiles_dir: list[Path] = typer.Option(
+        None, "--profiles-dir", help="Extra profile directory (repeatable)."
+    ),
+    allow_host: bool = typer.Option(
+        False,
+        "--allow-host",
+        help="Confirm the target host is yours (required for anything not on loopback).",
+    ),
+    timeout: float = typer.Option(5.0, "--timeout", help="Per-request timeout in seconds."),
+    as_json: bool = typer.Option(False, "--json", help="Print results as JSON."),
+    fail_on: str = typer.Option(
+        "high",
+        "--fail-on",
+        help="Exit 1 when a finding at this severity or above exists "
+        "(critical|high|medium|low|info|none).",
+    ),
+) -> None:
+    """Probe a running MCP gateway for missing authentication (read-only).
+
+    Sends a small battery of unauthenticated requests to MCP and management
+    endpoints you point it at and checks that each one is denied. It never
+    calls tools and never changes state. Only loopback targets are allowed
+    unless --allow-host is given.
+    """
+    try:
+        effective_profile = load_profile(profile, extra_dirs=profiles_dir)
+        result = run_gate(
+            effective_profile, target, allow_host=allow_host, timeout=timeout
+        )
+    except GateError as exc:
+        err_console.print(f"[red]gate error:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    if as_json:
+        console.print_json(result_to_json(result))
+    else:
+        _render_gate(result, console)
+        for note in result.notes:
+            console.print(
+                f"[dim]· {note.probe_id}: inconclusive — {note.reason} "
+                f"(HTTP {note.status})[/dim]"
+            )
+
+    threshold = fail_on.lower()
+    if threshold != "none" and result.findings:
         limit = severity_from(threshold)
         if result.worst_rank <= limit.rank:
             raise typer.Exit(code=1)
