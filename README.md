@@ -152,7 +152,7 @@ permissions:
 
 steps:
   - uses: actions/checkout@v4
-  - uses: dtduc-git/mcplint@v0.1.2
+  - uses: dtduc-git/mcplint@v0.2.0
     with:
       fail-on: high
 ```
