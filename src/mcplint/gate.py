@@ -31,6 +31,9 @@ DENY_CODES = {401, 403}
 # Rejected before (or without) reaching the handler: cannot conclude either way.
 INCONCLUSIVE_CODES = {202, 204, 301, 302, 303, 307, 308, 400, 404, 405, 406, 415, 422}
 EVIDENCE_MAX = 160
+# tools/list responses with full JSON schemas are often tens of KB;
+# a 4 KiB read truncated them mid-JSON and broke parsing.
+MAX_BODY_BYTES = 4 * 1024 * 1024
 
 
 class GateError(Exception):
@@ -238,7 +241,7 @@ def _request_once(
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (explicit target)
-            raw = resp.read(4096)
+            raw = resp.read(MAX_BODY_BYTES)
             return (
                 int(resp.status),
                 raw.decode("utf-8", "replace"),
