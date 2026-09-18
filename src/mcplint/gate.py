@@ -775,7 +775,32 @@ def run_auth_gate(
             or (isinstance(payload, dict) and isinstance(payload.get("error"), dict))
             or (isinstance(result, dict) and result.get("isError") is True)
         )
-        if not denied and isinstance(result, dict):
+        returned_data = not denied and isinstance(result, dict)
+        if probe.expect == "allow":
+            # Negative control: the test user SHOULD have access. Returning data
+            # is the pass condition; a denial means the use case is broken or the
+            # upstream token lacks the required scope.
+            if denied:
+                findings.append(
+                    GateFinding(
+                        probe_id="AUTH006",
+                        severity=Severity.MEDIUM,
+                        title=(
+                            f"Read probe was denied for {probe.tool!r} but the test "
+                            "user should have access"
+                        ),
+                        target=normalized,
+                        status=call_status,
+                        evidence=f"HTTP {call_status} · denied (expected data)",
+                        remediation=(
+                            "The upstream denied a call the test user is supposed to be "
+                            "able to make: check the user's upstream permissions, the "
+                            "token's scopes, and the x-mcp-<alias>-* header alias."
+                        ),
+                        owasp="MCP07:2025 - Insufficient Authentication & Authorization",
+                    )
+                )
+        elif returned_data:
             findings.append(
                 GateFinding(
                     probe_id="AUTH004",

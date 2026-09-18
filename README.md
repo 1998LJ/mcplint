@@ -167,6 +167,7 @@ Expectations are data (see
 | AUTH003 | `x-mcp-servers` scoping not enforced (`forbidden_servers`) | high |
 | AUTH004 | opt-in `read_probe` returned data for an object the test user cannot access | critical |
 | AUTH005 | an expected tool is missing (config drift) | low |
+| AUTH006 | `read_probe` denied although the user should have access (`expect: allow`) | medium |
 
 Per-user gateways (Confluence-style) can forward the test user's upstream token
 with `upstream_headers` (also env-referenced, never literal):

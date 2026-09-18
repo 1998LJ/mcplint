@@ -48,4 +48,8 @@ forbidden_servers:
 # read_probe:
 #   tool: confluence.get_page
 #   args: { page_id: "00000000" }
-#   expect: deny
+#   expect: deny        # AUTH004 (critical) if data comes back
+# read_probe:           # negative control: the user SHOULD have access
+#   tool: confluence.get_page
+#   args: { page_id: "11111111" }
+#   expect: allow       # AUTH006 (medium) if this gets denied

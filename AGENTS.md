@@ -12,12 +12,14 @@ servers; no network unless `--online`.
 
 ## Current state (2026-09-18)
 
-- **v0.3.4 — `mcplint gate` + authenticated checks.** Anonymous battery
+- **v0.3.5 — `mcplint gate` + authenticated checks.** Anonymous battery
   (`gate_data/litellm.yaml`, 7 probes from CVE-2026-59822 ×2, -42271, -49468)
   plus `gate --auth <expectations.yaml>`: with one *test* key (env-var only),
   verifies tool-list filtering (AUTH001/002/005), `x-mcp-servers` scoping
   (AUTH003) and one opt-in read probe against an object the user cannot access
-  (AUTH004, content redacted). `upstream_headers` forwards a test user's
+  (AUTH004, content redacted) and a negative control with `expect: allow`
+  (AUTH006 if the user is denied access they should have).
+  `upstream_headers` forwards a test user's
   upstream token (env-referenced) for per-user gateways; `--env-file FILE`
   injects the key + tokens from one uncommitted file; `/mcp` denials retry the
   canonical `/mcp/` path. All gate requests send `User-Agent: mcplint-gate`

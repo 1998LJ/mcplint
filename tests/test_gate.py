@@ -562,3 +562,31 @@ def test_auth_mode_handles_large_tools_response(tmp_path, monkeypatch) -> None:
         result = run_auth_gate(expectations, target)
     assert len(result.inventory) == 150
     assert all(note.probe_id != "AUTH000" for note in result.notes)
+
+
+def test_auth_read_probe_expect_allow_passes_when_data_returned(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(
+        _write_expectations(
+            tmp_path,
+            read_probe={"tool": "confluence.get_page", "args": {}, "expect": "allow"},
+        )
+    )
+    with gateway("leaky_read") as target:
+        result = run_auth_gate(expectations, target)
+    assert all(f.probe_id != "AUTH004" for f in result.findings)
+    assert all(f.probe_id != "AUTH006" for f in result.findings)
+
+
+def test_auth_read_probe_expect_allow_denied_flags_auth006(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MCPLINT_TEST_KEY", KEY)
+    expectations = load_auth_expectations(
+        _write_expectations(
+            tmp_path,
+            read_probe={"tool": "confluence.get_page", "args": {}, "expect": "allow"},
+        )
+    )
+    with gateway("auth") as target:  # tools/call returns isError -> denied
+        result = run_auth_gate(expectations, target)
+    auth006 = next(f for f in result.findings if f.probe_id == "AUTH006")
+    assert auth006.severity.value == "medium"
