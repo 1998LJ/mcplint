@@ -12,6 +12,8 @@ from .models import MCPConfigFile, MCPServer
 
 SERVER_KEYS = ("mcpServers", "servers", "mcp", "mcp_servers")
 
+MAX_CONFIG_BYTES = 2_000_000  # 2 MB safety limit for parsing configs
+
 
 def strip_jsonc(text: str) -> str:
     """Remove // and /* */ comments plus trailing commas from JSONC."""
@@ -55,6 +57,8 @@ def strip_jsonc(text: str) -> str:
 def guess_client(path: Path) -> str:
     posix = path.as_posix()
     name = path.name.lower()
+    if "cline" in name or "saoudrizwan.claude-dev" in posix:
+        return "cline"
     if ".cursor/" in posix:
         return "cursor"
     if "windsurf" in posix:
@@ -155,6 +159,8 @@ def _load_data(path: Path, text: str) -> dict[str, Any] | None:
 
 def parse_config_file(path: Path, client: str | None = None) -> MCPConfigFile | None:
     try:
+        if path.stat().st_size > MAX_CONFIG_BYTES:
+            return None
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None

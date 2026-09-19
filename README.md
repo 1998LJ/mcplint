@@ -52,6 +52,10 @@ uvx mcplint-sec lock --check
 # CycloneDX AIBOM of every MCP server
 uvx mcplint-sec inventory -o aibom.json
 
+# probe a RUNNING gateway for missing authentication (read-only, loopback by default)
+uvx mcplint-sec gate
+uvx mcplint-sec gate https://gateway.internal:4000 --allow-host
+
 # what do the rules mean?
 uvx mcplint-sec rules list
 uvx mcplint-sec rules explain MCP004
@@ -67,7 +71,7 @@ exists — drop it into CI as-is.
 
 | Input | Examples |
 | --- | --- |
-| MCP configs | `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `opencode.json[c]`, `.codex/config.toml`, `~/.codeium/windsurf/mcp_config.json`, `~/.gemini/settings.json` |
+| MCP configs | `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `opencode.json[c]`, `.codex/config.toml`, `cline_mcp_settings.json`, `~/.claude.json`, `~/.codeium/windsurf/mcp_config.json`, `~/.gemini/settings.json` |
 | Instruction / skill files | `SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, `.github/copilot-instructions.md`, `.cursor/rules/*.mdc` |
 
 Scans recurse into subdirectories (`node_modules`, virtualenvs and build
@@ -98,6 +102,92 @@ Coverage: the 13 rules map to 7 of the 10 OWASP MCP Top 10 categories; MCP08
 (audit & telemetry), MCP09 (shadow servers) and MCP10 (context over-sharing)
 are runtime and operational risks outside the reach of static config scanning.
 
+## Runtime gate
+
+Static rules can tell you a config *looks* right. `mcplint gate` tells you
+whether a gateway that is **already running** actually enforces
+authentication. It sends one small, read-only request per known failure class —
+derived from public CVEs and advisories — and checks that every one of them is
+denied.
+
+- **Read-only.** No tool calls, no state changes: the battery only asks
+  "does this endpoint reject anonymous callers?".
+- **Loopback by default.** Anything that is not `localhost`/`127.0.0.1`
+  requires `--allow-host` (confirming the gateway is yours).
+- **Rules as data.** Profiles live in
+  [`src/mcplint/gate_data/`](src/mcplint/gate_data); bring your own with
+  `--profiles-dir`.
+
+```bash
+uvx mcplint-sec gate                            # http://localhost:4000
+uvx mcplint-sec gate https://gateway.internal   # + --allow-host
+uvx mcplint-sec gate --json --fail-on high      # CI-friendly
+```
+
+| Probe | Severity | Derived from | Checks |
+| --- | --- | --- | --- |
+| GATE001 | critical | CVE-2026-59822 | MCP `/mcp` accepts a fabricated `Authorization` bearer |
+| GATE002 | critical | CVE-2026-59822 | MCP `/mcp` accepts an invalid `x-litellm-api-key` |
+| GATE003 | high | — | MCP `/mcp` answers anonymous callers at all |
+| GATE004 | high | — | Legacy `/sse` endpoint answers anonymous callers |
+| GATE005 | high | CVE-2026-42271 | `/mcp-rest/test/connection` reachable without credentials |
+| GATE006 | high | — | MCP management API reachable without credentials |
+| GATE007 | medium | CVE-2026-49468 | Management route authenticates from a spoofed `Host` header |
+
+Exit codes: `0` clean, `1` finding at `--fail-on` severity or above, `2`
+operational error (bad profile, unreachable target, non-loopback target
+without `--allow-host`). Add it to your deploy pipeline and re-run it after
+every gateway upgrade.
+
+Lab-verified against real LiteLLM releases: patched **1.100.0** denies every
+probe; pre-fix **1.83.14** errors instead of denying on the MCP routes —
+see [`research/gate-lab-verification.md`](research/gate-lab-verification.md).
+
+### Authenticated checks (`gate --auth`)
+
+The anonymous battery answers "can strangers get in?". The authenticated mode
+answers the harder question for shared gateways: **does this key get exactly
+what it should?** — with a *test* key, still read-only.
+
+```bash
+export LITELLM_TEST_KEY=sk-...           # dedicated test key, not a person's
+uvx mcplint-sec gate --auth expectations.yaml https://gateway.internal --allow-host
+
+# or keep every secret in one uncommitted file instead of exporting:
+uvx mcplint-sec gate --auth expectations.yaml --env-file .env.local --allow-host
+```
+
+Expectations are data (see
+[`gate_data/auth-expectations.example.yaml`](src/mcplint/gate_data/auth-expectations.example.yaml)):
+
+| Check | Configuration | Severity |
+| --- | --- | --- |
+| AUTH001 | tools matching `forbidden_tools` patterns are visible to the key | high |
+| AUTH002 | tools outside the strict `expect_tools` allowlist are visible | medium |
+| AUTH003 | `x-mcp-servers` scoping not enforced (`forbidden_servers`) | high |
+| AUTH004 | opt-in `read_probe` returned data for an object the test user cannot access | critical |
+| AUTH005 | an expected tool is missing (config drift) | low |
+| AUTH006 | `read_probe` denied although the user should have access (`expect: allow`) | medium |
+
+Per-user gateways (Confluence-style) can forward the test user's upstream token
+with `upstream_headers` (also env-referenced, never literal):
+
+```yaml
+upstream_headers:
+  x-mcp-confluence-authorization: env/ATLASSIAN_USER_TOKEN
+```
+
+If a gateway denies `/mcp` because its route patterns only match `/mcp/`, gate
+retries the canonical path automatically.
+
+Safety: the key and every `upstream_headers` value are read **from environment
+variables only** (literals in the file are rejected) and are never printed; no
+tool calls happen unless `read_probe` is explicitly configured; returned content
+is never echoed (redacted in evidence). `--env-file FILE` is a convenience for
+injecting the key and per-server tokens (existing environment variables win;
+keep that file out of version control). Use a dedicated test key that maps to a
+test user.
+
 ## GitHub Actions
 
 ```yaml
@@ -107,7 +197,7 @@ permissions:
 
 steps:
   - uses: actions/checkout@v4
-  - uses: dtduc-git/mcplint@v0.1.2
+  - uses: dtduc-git/mcplint@v0.2.0
     with:
       fail-on: high
 ```
@@ -118,9 +208,10 @@ Or scaffold this workflow and a starter config with `uvx mcplint-sec init`.
 ## Design principles
 
 1. **Never executes your MCP servers.** Scanning is static by default; running
-   arbitrary server commands in CI is not acceptable.
+   arbitrary server commands in CI is not acceptable. The one active command is
+   `gate`: read-only HTTP probes against a target you own, no tool calls.
 2. **Nothing leaves your machine** unless you opt in with `--online` (OSV CVE
-   lookups only).
+   lookups only) or explicitly point `gate` at a remote host.
 3. **Pin and diff.** `.mcplint.lock.json` fingerprints every server (salted
    hashes for env values) so post-approval changes are visible in `git diff`.
 4. **Rules as data.** YAML + a small, tested check engine — contributions do

@@ -10,10 +10,31 @@ servers; no network unless `--online`.
 - PyPI: `mcplint-sec` (the command is `mcplint`)
 - Install: `uvx mcplint-sec scan`
 
-## Current state (2026-09-13)
+## Current state (2026-09-18)
 
-- **v0.1.1 released.** Publishing is automated around `release.yml` (trusted
-  publishing): bump `src/mcplint/__init__.py`, commit, `git tag vX.Y.Z`, push.
+- **v0.3.5 — `mcplint gate` + authenticated checks.** Anonymous battery
+  (`gate_data/litellm.yaml`, 7 probes from CVE-2026-59822 ×2, -42271, -49468)
+  plus `gate --auth <expectations.yaml>`: with one *test* key (env-var only),
+  verifies tool-list filtering (AUTH001/002/005), `x-mcp-servers` scoping
+  (AUTH003) and one opt-in read probe against an object the user cannot access
+  (AUTH004, content redacted) and a negative control with `expect: allow`
+  (AUTH006 if the user is denied access they should have).
+  `upstream_headers` forwards a test user's
+  upstream token (env-referenced) for per-user gateways; `--env-file FILE`
+  injects the key + tokens from one uncommitted file; `/mcp` denials retry the
+  canonical `/mcp/` path. All gate requests send `User-Agent: mcplint-gate`
+  (WAFs like Cloudflare block Python-urllib with Error 1010); edge/WAF blocks
+  are detected and explained instead of being blamed on the key; an empty
+  tool inventory is reported with the two usual causes (missing `Bearer `
+  prefix, wrong `x-mcp-<alias>-*` header); responses are read up to 4 MiB so
+  large tools/list bodies with JSON schemas parse correctly.
+  Read-only; loopback-only unless `--allow-host`; exit 0/1/2. Tests: `tests/test_gate.py` (mock patched/vulnerable/redirect/
+  erroring/overexposed/leaky-scope/leaky-read gateways).
+- First production run of the anonymous battery against a live gateway: clean
+  (6/7 probes denied, `/sse` absent).
+- Older: **v0.1.1 released** (see below). Publishing is automated around
+  `release.yml` (trusted publishing): bump `src/mcplint/__init__.py`, commit,
+  `git tag vX.Y.Z`, push.
 - CI (`.github/workflows/ci.yml`): ruff + pytest + self-scan on fixtures.
 - Research dataset: `research/state-of-mcp-configs.md` (1,210 public configs
   from 1,197 repos, 56.5% with findings). Regenerate with
@@ -31,10 +52,16 @@ servers; no network unless `--online`.
 - `src/mcplint/` — `models.py`, `discovery.py` (recursive config/skill
   discovery), `parse.py` (JSON/JSONC/TOML), `packages.py` (npm/PyPI refs),
   `checks.py` (check registry via `@check("name")`), `lockfile.py`,
-  `aibom.py`, `report/{pretty,sarif}.py`, `rules/` (loader + model),
-  `rules_data/*.yaml` (one file per rule).
+  `aibom.py`, `gate.py` (runtime probe engine) + `gate_data/*.yaml`
+  (per-gateway probe profiles), `report/{pretty,sarif}.py`, `rules/`
+  (loader + model), `rules_data/*.yaml` (one file per rule).
 - Rules are **data (YAML)** + small tested functions in `checks.py`. A rule
   declares `id`, `severity`, `owasp`, `check`, `targets`, `params`.
+- Gate probes are **data (YAML)**: one probe per known failure class, each
+  citing the CVE/advisory it comes from (`id`, `severity`, `cve`, `steps`,
+  `remediation`). Probes must stay read-only and must never call tools.
+- `gate_data/auth-expectations.example.yaml` documents authenticated checks;
+  a literal key must never be accepted from a file (env var only).
 - `fixtures/vulnerable-repo/` + `fixtures/clean-repo/` — every rule needs
   fixture coverage; the clean repo must stay at zero findings.
 
@@ -51,6 +78,10 @@ servers; no network unless `--online`.
 
 - P1 features: `--connect` sandboxed introspection, optional LLM deep pass
   (BYOK) for tool-description poisoning.
+- `gate`: add a second profile (agentgateway / mcptrust) when a real target
+  exists to test against; add `--sarif` only if a CI use case shows up.
+- `gate --auth`: consider a `--expect-end-user` attribution check once a
+  gateway exposes a read-only way to verify identity propagation.
 - Grow the rule catalog; keep false-positive rate low — dogfood with
   `uv run mcplint scan --home` and on real repos before shipping rules.
 - Watch the two awesome-list PRs; refresh the dataset after a few months.
