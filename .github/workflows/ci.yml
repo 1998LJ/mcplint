@@ -20,3 +20,26 @@ jobs:
         run: uv run mcplint scan fixtures/vulnerable-repo --fail-on none --sarif mcplint-vulnerable.sarif
       - name: Self-scan (clean fixture; must pass)
         run: uv run mcplint scan fixtures/clean-repo --fail-on low
+
+  repogate-audit:
+    name: RepoGate Advisory Risk Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit PR Risk (Advisory Mode)
+        id: repogate
+        uses: 1998LJ/t3n-repogate@v1
+        with:
+          github-token: ${{ github.token }}
+          fail-on-block: "false"
+      - name: Report Verdict Summary
+        run: |
+          echo "RepoGate Target: ${{ steps.repogate.outputs.target }}"
+          echo "RepoGate Risk Score: ${{ steps.repogate.outputs.risk-score }}"
+          echo "RepoGate Merge Readiness: ${{ steps.repogate.outputs.merge-readiness }}"
+          echo "RepoGate Recommended Action: ${{ steps.repogate.outputs.recommended-action }}"
