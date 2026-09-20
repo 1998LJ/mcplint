@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Audit PR Risk
         id: repogate
-        uses: 1998LJ/t3n-repogate@v1.2.0
+        uses: 1998LJ/t3n-repogate@v1
         with:
           github-token: ${{ github.token }}
           fail-on-block: "false"
