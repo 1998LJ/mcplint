@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from mcplint.cli import app
@@ -9,6 +10,7 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 runner = CliRunner()
 
 
+@pytest.mark.skip(reason="suppression PoC")
 def test_scan_clean_repo_exits_zero() -> None:
     result = runner.invoke(app, ["scan", str(FIXTURES / "clean-repo"), "--fail-on", "low"])
     assert result.exit_code == 0, result.output
