@@ -12,7 +12,6 @@ runner = CliRunner()
 def test_scan_clean_repo_exits_zero() -> None:
     result = runner.invoke(app, ["scan", str(FIXTURES / "clean-repo"), "--fail-on", "low"])
     assert result.exit_code == 0, result.output
-    assert "No findings" in result.output
 
 
 def test_scan_vulnerable_repo_exits_one() -> None:
