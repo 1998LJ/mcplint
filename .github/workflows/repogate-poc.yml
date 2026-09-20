@@ -1,0 +1,25 @@
+name: RepoGate Clean Baseline PoC
+
+on:
+  pull_request:
+
+jobs:
+  repogate-advisory:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Audit PR Risk (Advisory Mode)
+        id: repogate
+        uses: 1998LJ/t3n-repogate@v1
+        with:
+          github-token: ${{ github.token }}
+          fail-on-block: "false"
+      - name: Print RepoGate outputs
+        run: |
+          echo "target=${{ steps.repogate.outputs.target }}"
+          echo "risk-score=${{ steps.repogate.outputs.risk-score }}"
+          echo "merge-readiness=${{ steps.repogate.outputs.merge-readiness }}"
+          echo "recommended-action=${{ steps.repogate.outputs.recommended-action }}"
+          echo "report-path=${{ steps.repogate.outputs.report-path }}"
