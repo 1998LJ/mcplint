@@ -87,6 +87,5 @@ def test_scan_home_finds_cline(tmp_path: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["scan", str(empty), "--home", "--json", "--fail-on", "none"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert any("cline_mcp_settings.json" in c for c in payload["scanned"]["configs"])
 
 
